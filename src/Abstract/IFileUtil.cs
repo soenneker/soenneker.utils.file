@@ -6,6 +6,10 @@ using Soenneker.Utils.FileSync.Abstract;
 
 namespace Soenneker.Utils.File.Abstract;
 
+/// <summary>
+/// A utility library encapsulating both async/sync file IO operations <para/>
+/// (Adds asynchronous support to <see cref="IFileUtilSync"/>)
+/// </summary>
 public interface IFileUtil : IFileUtilSync
 {
     /// <summary>
