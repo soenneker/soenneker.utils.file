@@ -9,11 +9,19 @@ public static class FileUtilRegistrar
 {
     /// <summary>
     /// Adds IFileUtil as a scoped service. <para/>
-    /// Shorthand for <code>services.AddScoped</code> <para/>
     /// </summary>
-    public static void AddFileUtil(this IServiceCollection services)
+    public static void AddFileUtilAsScoped(this IServiceCollection services)
     {
         services.AddMemoryStreamUtil();
         services.TryAddScoped<IFileUtil, FileUtil>();
+    }
+
+    /// <summary>
+    /// Adds IFileUtil as a singleton service. <para/>
+    /// </summary>
+    public static void AddFileUtilAsSingleton(this IServiceCollection services)
+    {
+        services.AddMemoryStreamUtil();
+        services.TryAddSingleton<IFileUtil, FileUtil>();
     }
 }

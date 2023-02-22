@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFrameworks>net6.0;net7.0</TargetFrameworks>
+        <TargetFrameworks>net7.0</TargetFrameworks>
         <Nullable>enable</Nullable>
         <Platforms>AnyCPU</Platforms>
         <NoWarn>$(NoWarn);1591</NoWarn>
@@ -38,7 +38,8 @@
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
 
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
-        <PackageReference Include="Soenneker.Utils.FileSync" Version="1.0.8" />
-        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="1.0.4" />
+
+        <PackageReference Include="Soenneker.Utils.FileSync" Version="1.0.9" />
+        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="1.0.5" />
     </ItemGroup>
 </Project>
