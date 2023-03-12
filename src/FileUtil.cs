@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Soenneker.Extensions.Stream;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.FileSync;
 using Soenneker.Utils.MemoryStream.Abstract;
@@ -46,14 +47,14 @@ public class FileUtil : FileUtilSync, IFileUtil
     {
         _logger.LogDebug("ReadFile starting for {name} ...", path);
 
-        System.IO.MemoryStream memoryStream = _memoryStreamUtil.Get();
+        System.IO.MemoryStream memoryStream = await _memoryStreamUtil.Get();
 
         FileStream fileStream = System.IO.File.OpenRead(path);
 
         await fileStream.CopyToAsync(memoryStream);
 
         fileStream.Close();
-        memoryStream.Seek(0, SeekOrigin.Begin);
+        memoryStream.ToStart();
 
         return memoryStream;
     }
@@ -76,7 +77,7 @@ public class FileUtil : FileUtilSync, IFileUtil
 
     public new async Task WriteFile(string path, Stream stream)
     {
-        stream.Seek(0, SeekOrigin.Begin);
+        stream.ToStart();
 
         var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write);
         await stream.CopyToAsync(fileStream);
