@@ -1,9 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Soenneker.Utils.File.Abstract;
-using Soenneker.Utils.MemoryStream.Extensions;
+using Soenneker.Utils.MemoryStream.Registrars;
 
-namespace Soenneker.Utils.File.Extensions;
+namespace Soenneker.Utils.File.Registrars;
 
 public static class FileUtilRegistrar
 {
