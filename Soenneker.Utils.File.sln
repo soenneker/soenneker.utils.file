@@ -8,9 +8,13 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Soenneker.Utils.File.Tests"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{A7BF2503-59F1-4714-B4FD-4C1557702ACE}"
 	ProjectSection(SolutionItems) = preProject
+		.github\dependabot.yml = .github\dependabot.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{E8996049-67B0-46D8-84C1-FB4F2F694E33}"
+	ProjectSection(SolutionItems) = preProject
 		.github\workflows\automerge.yml = .github\workflows\automerge.yml
 		.github\workflows\buildandtest.yml = .github\workflows\buildandtest.yml
-		.github\dependabot.yml = .github\dependabot.yml
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 	EndProjectSection
 EndProject
@@ -31,6 +35,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E8996049-67B0-46D8-84C1-FB4F2F694E33} = {A7BF2503-59F1-4714-B4FD-4C1557702ACE}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B849EC5C-B7B3-4C90-9B66-CBC15CCB776A}
