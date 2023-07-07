@@ -38,7 +38,7 @@
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
 
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
-        <PackageReference Include="Soenneker.Extensions.Stream" Version="1.0.26" />
+        <PackageReference Include="Soenneker.Extensions.Stream" Version="1.0.28" />
         <PackageReference Include="Soenneker.Utils.FileSync" Version="1.0.72" />
         <PackageReference Include="Soenneker.Utils.MemoryStream" Version="1.0.95" />
     </ItemGroup>
