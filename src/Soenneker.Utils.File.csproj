@@ -40,6 +40,6 @@
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
         <PackageReference Include="Soenneker.Extensions.Stream" Version="1.0.36" />
         <PackageReference Include="Soenneker.Utils.FileSync" Version="1.0.135" />
-        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="1.0.166" />
+        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="1.0.167" />
     </ItemGroup>
 </Project>
