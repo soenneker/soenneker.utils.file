@@ -39,7 +39,7 @@
 
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
         <PackageReference Include="Soenneker.Extensions.Stream" Version="2.0.40" />
-        <PackageReference Include="Soenneker.Utils.FileSync" Version="1.0.163" />
+        <PackageReference Include="Soenneker.Utils.FileSync" Version="2.0.168" />
         <PackageReference Include="Soenneker.Utils.MemoryStream" Version="2.0.196" />
     </ItemGroup>
 </Project>
