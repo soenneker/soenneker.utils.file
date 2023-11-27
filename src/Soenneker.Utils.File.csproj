@@ -38,6 +38,6 @@
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
 
         <PackageReference Include="Soenneker.Utils.FileSync" Version="2.1.4" />
-        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="2.1.64" />
+        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="2.1.65" />
     </ItemGroup>
 </Project>
