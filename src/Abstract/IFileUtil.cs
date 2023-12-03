@@ -21,6 +21,9 @@ public interface IFileUtil : IFileUtilSync
     [Pure]
     new Task<byte[]> ReadFileToBytes(string path);
 
+    [Pure]
+    ValueTask<string?> TryReadFile(string path, bool log = true);
+
     /// <summary>
     /// The read returning from this will be at the beginning. Closes file after reading into the stream.
     /// </summary>

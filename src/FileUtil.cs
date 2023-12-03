@@ -1,9 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Stream;
+using Soenneker.Extensions.Task;
+using Soenneker.Extensions.ValueTask;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.FileSync;
 using Soenneker.Utils.MemoryStream.Abstract;
@@ -29,6 +32,25 @@ public class FileUtil : FileUtilSync, IFileUtil
         return System.IO.File.ReadAllTextAsync(path);
     }
 
+    public async ValueTask<string?> TryReadFile(string path, bool log = true)
+    {
+        if (log)
+            _logger.LogDebug("{name} start for {path} ...", nameof(TryReadFile), path);
+
+        string? result = null;
+
+        try
+        {
+            result = await System.IO.File.ReadAllTextAsync(path).NoSync();
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Could not read file {path}", path);
+        }
+
+        return result;
+    }
+
     public new Task WriteAllLines(string path, IEnumerable<string> lines)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(WriteAllLines), path);
@@ -47,11 +69,11 @@ public class FileUtil : FileUtilSync, IFileUtil
     {
         _logger.LogDebug("ReadFile starting for {name} ...", path);
 
-        System.IO.MemoryStream memoryStream = await _memoryStreamUtil.Get();
+        System.IO.MemoryStream memoryStream = await _memoryStreamUtil.Get().NoSync();
 
         FileStream fileStream = System.IO.File.OpenRead(path);
 
-        await fileStream.CopyToAsync(memoryStream);
+        await fileStream.CopyToAsync(memoryStream).NoSync();
 
         fileStream.Close();
         memoryStream.ToStart();
@@ -63,7 +85,7 @@ public class FileUtil : FileUtilSync, IFileUtil
     {
         _logger.LogDebug("ReadFileInLines start for {name} ...", path);
 
-        List<string> content = (await System.IO.File.ReadAllLinesAsync(path)).ToList();
+        List<string> content = (await System.IO.File.ReadAllLinesAsync(path).NoSync()).ToList();
 
         return content;
     }
@@ -80,8 +102,8 @@ public class FileUtil : FileUtilSync, IFileUtil
         stream.ToStart();
 
         var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write);
-        await stream.CopyToAsync(fileStream);
-        await fileStream.DisposeAsync();
+        await stream.CopyToAsync(fileStream).NoSync();
+        await fileStream.DisposeAsync().NoSync();
     }
 
     public new Task WriteFile(string path, byte[] byteArray)

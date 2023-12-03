@@ -36,6 +36,8 @@
         <None Include="..\README.md" Pack="true" PackagePath="\" />
         <None Include="..\LICENSE" Pack="true" PackagePath="\" />
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
+        <PackageReference Include="Soenneker.Extensions.Task" Version="2.1.6" />
+        <PackageReference Include="Soenneker.Extensions.ValueTask" Version="2.1.5" />
 
         <PackageReference Include="Soenneker.Utils.FileSync" Version="2.1.51" />
         <PackageReference Include="Soenneker.Utils.MemoryStream" Version="2.1.65" />
