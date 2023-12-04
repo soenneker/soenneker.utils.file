@@ -40,6 +40,6 @@
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="2.1.5" />
 
         <PackageReference Include="Soenneker.Utils.FileSync" Version="2.1.51" />
-        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="2.1.65" />
+        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="2.1.66" />
     </ItemGroup>
 </Project>
