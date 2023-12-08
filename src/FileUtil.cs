@@ -8,25 +8,23 @@ using Soenneker.Extensions.Stream;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Utils.File.Abstract;
-using Soenneker.Utils.FileSync;
-using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.MemoryStream.Abstract;
 
 namespace Soenneker.Utils.File;
 
 /// <inheritdoc cref="IFileUtil"/>
-public class FileUtil : FileUtilSync, IFileUtil
+public class FileUtil : IFileUtil
 {
     private readonly ILogger<FileUtil> _logger;
     private readonly IMemoryStreamUtil _memoryStreamUtil;
 
-    public FileUtil(ILogger<FileUtil> logger, IMemoryStreamUtil memoryStreamUtil, IDirectoryUtil directoryUtil) : base(logger, directoryUtil)
+    public FileUtil(ILogger<FileUtil> logger, IMemoryStreamUtil memoryStreamUtil)
     {
         _logger = logger;
         _memoryStreamUtil = memoryStreamUtil;
     }
 
-    public new Task<string> ReadFile(string path)
+    public Task<string> ReadFile(string path)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(ReadFile), path);
 
@@ -52,14 +50,14 @@ public class FileUtil : FileUtilSync, IFileUtil
         return result;
     }
 
-    public new Task WriteAllLines(string path, IEnumerable<string> lines)
+    public Task WriteAllLines(string path, IEnumerable<string> lines)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(WriteAllLines), path);
 
         return System.IO.File.WriteAllLinesAsync(path, lines);
     }
 
-    public new Task<byte[]> ReadFileToBytes(string path)
+    public Task<byte[]> ReadFileToBytes(string path)
     {
         _logger.LogDebug("ReadFile start for {name} ...", path);
 
@@ -82,7 +80,7 @@ public class FileUtil : FileUtilSync, IFileUtil
         return memoryStream;
     }
 
-    public new async ValueTask<List<string>> ReadFileAsLines(string path)
+    public async ValueTask<List<string>> ReadFileAsLines(string path)
     {
         _logger.LogDebug("ReadFileInLines start for {name} ...", path);
 
@@ -91,14 +89,14 @@ public class FileUtil : FileUtilSync, IFileUtil
         return content;
     }
 
-    public new Task WriteFile(string path, string content)
+    public Task WriteFile(string path, string content)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(System.IO.File.WriteAllTextAsync), path);
 
         return System.IO.File.WriteAllTextAsync(path, content);
     }
 
-    public new async Task WriteFile(string path, Stream stream)
+    public async Task WriteFile(string path, Stream stream)
     {
         stream.ToStart();
 
@@ -107,7 +105,7 @@ public class FileUtil : FileUtilSync, IFileUtil
         await fileStream.DisposeAsync().NoSync();
     }
 
-    public new Task WriteFile(string path, byte[] byteArray)
+    public Task WriteFile(string path, byte[] byteArray)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(System.IO.File.WriteAllBytesAsync), path);
 

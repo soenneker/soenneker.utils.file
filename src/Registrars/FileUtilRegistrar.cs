@@ -5,6 +5,9 @@ using Soenneker.Utils.MemoryStream.Registrars;
 
 namespace Soenneker.Utils.File.Registrars;
 
+/// <summary>
+/// A utility library encapsulating asynchronous file IO operations
+/// </summary>
 public static class FileUtilRegistrar
 {
     /// <summary>
