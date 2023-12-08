@@ -9,6 +9,7 @@ using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.FileSync;
+using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.MemoryStream.Abstract;
 
 namespace Soenneker.Utils.File;
@@ -19,7 +20,7 @@ public class FileUtil : FileUtilSync, IFileUtil
     private readonly ILogger<FileUtil> _logger;
     private readonly IMemoryStreamUtil _memoryStreamUtil;
 
-    public FileUtil(ILogger<FileUtil> logger, IMemoryStreamUtil memoryStreamUtil) : base(logger)
+    public FileUtil(ILogger<FileUtil> logger, IMemoryStreamUtil memoryStreamUtil, IDirectoryUtil directoryUtil) : base(logger, directoryUtil)
     {
         _logger = logger;
         _memoryStreamUtil = memoryStreamUtil;

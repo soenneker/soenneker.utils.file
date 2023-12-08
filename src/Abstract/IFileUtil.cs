@@ -25,7 +25,7 @@ public interface IFileUtil : IFileUtilSync
     ValueTask<string?> TryReadFile(string path, bool log = true);
 
     /// <summary>
-    /// The read returning from this will be at the beginning. Closes file after reading into the stream.
+    /// The read returning from this will be at the beginning. Closes file after reading into the stream. It's imperative that you close this stream after reading from it.
     /// </summary>
     [Pure]
     ValueTask<System.IO.MemoryStream> ReadFileToMemoryStream(string path);
