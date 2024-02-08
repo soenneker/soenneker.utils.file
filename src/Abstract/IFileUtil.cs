@@ -38,7 +38,7 @@ public interface IFileUtil
     /// <summary>
     /// Will not close the incoming stream. Will close the file it wrote to. Will seek the stream to the beginning before writing.
     /// </summary>
-    Task WriteFile(string path, Stream stream);
+    ValueTask WriteFile(string path, Stream stream);
 
     Task WriteFile(string path, byte[] byteArray);
 }

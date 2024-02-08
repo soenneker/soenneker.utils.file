@@ -66,15 +66,23 @@ public class FileUtil : IFileUtil
 
     public async ValueTask<System.IO.MemoryStream> ReadFileToMemoryStream(string path)
     {
-        _logger.LogDebug("ReadFile starting for {name} ...", path);
+        _logger.LogDebug("{name} starting for {path} ...",nameof(ReadFileToMemoryStream), path);
 
         System.IO.MemoryStream memoryStream = await _memoryStreamUtil.Get().NoSync();
 
-        FileStream fileStream = System.IO.File.OpenRead(path);
+        await using (FileStream fileStream = System.IO.File.OpenRead(path))
+        {
+            const int bufferSize = 81920;
+            var buffer = new byte[bufferSize];
+            Memory<byte> memoryBuffer = buffer.AsMemory();
+            int bytesRead;
 
-        await fileStream.CopyToAsync(memoryStream).NoSync();
+            while ((bytesRead = await fileStream.ReadAsync(memoryBuffer)) > 0)
+            {
+                await memoryStream.WriteAsync(memoryBuffer.Slice(0, bytesRead));
+            }
+        }
 
-        fileStream.Close();
         memoryStream.ToStart();
 
         return memoryStream;
@@ -96,13 +104,22 @@ public class FileUtil : IFileUtil
         return System.IO.File.WriteAllTextAsync(path, content);
     }
 
-    public async Task WriteFile(string path, Stream stream)
+    public async ValueTask WriteFile(string path, Stream stream)
     {
         stream.ToStart();
 
-        var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write);
-        await stream.CopyToAsync(fileStream).NoSync();
-        await fileStream.DisposeAsync().NoSync();
+        await using (var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write))
+        {
+            const int bufferSize = 81920;
+            var buffer = new byte[bufferSize];
+            Memory<byte> memoryBuffer = buffer.AsMemory();
+            int bytesRead;
+
+            while ((bytesRead = await stream.ReadAsync(memoryBuffer).NoSync()) > 0)
+            {
+                await fileStream.WriteAsync(memoryBuffer.Slice(0, bytesRead)).NoSync();
+            }
+        }
     }
 
     public Task WriteFile(string path, byte[] byteArray)
