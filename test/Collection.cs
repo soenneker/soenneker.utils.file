@@ -1,7 +1,6 @@
-using Soenneker.Utils.File.Tests;
 using Xunit;
 
-namespace Soenneker.Utils.String.JaccardSimilarity.Tests;
+namespace Soenneker.Utils.File.Tests;
 
 /// <summary>
 /// This class has no code, and is never created. Its purpose is simply
