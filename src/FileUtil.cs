@@ -109,16 +109,15 @@ public class FileUtil : IFileUtil
     {
         stream.ToStart();
 
-        await using (var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write))
-        {
-            const int bufferSize = 81920;
-            var buffer = new byte[bufferSize];
-            Memory<byte> memoryBuffer = buffer.AsMemory();
-            int bytesRead;
+        const int bufferSize = 8192;
+        var buffer = new byte[bufferSize];
 
-            while ((bytesRead = await stream.ReadAsync(memoryBuffer, cancellationToken).NoSync()) > 0)
+        await using (var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true))
+        {
+            int bytesRead;
+            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).NoSync()) > 0)
             {
-                await fileStream.WriteAsync(memoryBuffer.Slice(0, bytesRead), cancellationToken).NoSync();
+                await fileStream.WriteAsync(buffer, 0, bytesRead, cancellationToken).NoSync();
             }
         }
     }
