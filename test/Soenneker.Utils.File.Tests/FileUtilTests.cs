@@ -48,7 +48,7 @@ public class FileUtilTests : FixturedUnitTest
         var path = "test.txt";
         var expectedContent = "Test file content";
 
-        var content = await _fileUtil.TryReadFile(path);
+        var content = await _fileUtil.TryRead(path);
 
         content.Should().Be(expectedContent);
     }
@@ -58,7 +58,7 @@ public class FileUtilTests : FixturedUnitTest
     {
         var path = "nonexistent.txt";
 
-        var content = await _fileUtil.TryReadFile(path);
+        var content = await _fileUtil.TryRead(path);
 
         content.Should().BeNull();
     }
@@ -82,7 +82,7 @@ public class FileUtilTests : FixturedUnitTest
         var expectedContent = "Test file content";
         var expectedBytes = expectedContent.Select(c => (byte)c).ToArray();
 
-        var contentBytes = await _fileUtil.ReadFileToBytes(path);
+        var contentBytes = await _fileUtil.ReadToBytes(path);
 
         contentBytes.Should().BeEquivalentTo(expectedBytes);
     }
@@ -93,7 +93,7 @@ public class FileUtilTests : FixturedUnitTest
         var path = "test.txt";
         var expectedContent = "Test file content";
 
-        using var memoryStream = await _fileUtil.ReadFileToMemoryStream(path);
+        using var memoryStream = await _fileUtil.ReadToMemoryStream(path);
         using var reader = new StreamReader(memoryStream);
 
         var content = await reader.ReadToEndAsync();
@@ -111,7 +111,7 @@ public class FileUtilTests : FixturedUnitTest
 
         var expectedContent = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        var content = await _fileUtil.ReadFileAsLines(path);
+        var content = await _fileUtil.ReadAsLines(path);
 
         content.Should().BeEquivalentTo(expectedContent);
     }
@@ -122,7 +122,7 @@ public class FileUtilTests : FixturedUnitTest
         var path = "testWriteFile.txt";
         var content = "Test content to write";
 
-        await _fileUtil.WriteFile(path, content);
+        await _fileUtil.Write(path, content);
 
         var writtenContent = await System.IO.File.ReadAllTextAsync(path);
         writtenContent.Should().Be(content);
@@ -139,7 +139,7 @@ public class FileUtilTests : FixturedUnitTest
         writer.Flush();
         stream.Position = 0;
 
-        await _fileUtil.WriteFile(path, stream);
+        await _fileUtil.Write(path, stream);
 
         var writtenContent = await System.IO.File.ReadAllTextAsync(path);
         writtenContent.Should().Be(content);
@@ -152,7 +152,7 @@ public class FileUtilTests : FixturedUnitTest
         var content = "Test content to write with byte array";
         var bytes = System.Text.Encoding.UTF8.GetBytes(content);
 
-        await _fileUtil.WriteFile(path, bytes);
+        await _fileUtil.Write(path, bytes);
 
         var writtenContent = await System.IO.File.ReadAllTextAsync(path);
         writtenContent.Should().Be(content);

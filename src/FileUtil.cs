@@ -32,10 +32,10 @@ public class FileUtil : IFileUtil
         return System.IO.File.ReadAllTextAsync(path, cancellationToken);
     }
 
-    public async ValueTask<string?> TryReadFile(string path, bool log = true, CancellationToken cancellationToken = default)
+    public async ValueTask<string?> TryRead(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(TryReadFile), path);
+            _logger.LogDebug("{name} start for {path} ...", nameof(TryRead), path);
 
         string? result = null;
 
@@ -58,16 +58,16 @@ public class FileUtil : IFileUtil
         return System.IO.File.WriteAllLinesAsync(path, lines, cancellationToken);
     }
 
-    public Task<byte[]> ReadFileToBytes(string path, CancellationToken cancellationToken = default)
+    public Task<byte[]> ReadToBytes(string path, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("ReadFile start for {name} ...", path);
 
         return System.IO.File.ReadAllBytesAsync(path, cancellationToken);
     }
 
-    public async ValueTask<System.IO.MemoryStream> ReadFileToMemoryStream(string path, CancellationToken cancellationToken = default)
+    public async ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("{name} starting for {path} ...", nameof(ReadFileToMemoryStream), path);
+        _logger.LogDebug("{name} starting for {path} ...", nameof(ReadToMemoryStream), path);
 
         System.IO.MemoryStream memoryStream = await _memoryStreamUtil.Get(cancellationToken).NoSync();
 
@@ -89,7 +89,7 @@ public class FileUtil : IFileUtil
         return memoryStream;
     }
 
-    public async ValueTask<List<string>> ReadFileAsLines(string path, CancellationToken cancellationToken = default)
+    public async ValueTask<List<string>> ReadAsLines(string path, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("ReadFileInLines start for {name} ...", path);
 
@@ -98,14 +98,14 @@ public class FileUtil : IFileUtil
         return content;
     }
 
-    public Task WriteFile(string path, string content, CancellationToken cancellationToken = default)
+    public Task Write(string path, string content, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(System.IO.File.WriteAllTextAsync), path);
 
         return System.IO.File.WriteAllTextAsync(path, content, cancellationToken);
     }
 
-    public async ValueTask WriteFile(string path, Stream stream, CancellationToken cancellationToken = default)
+    public async ValueTask Write(string path, Stream stream, CancellationToken cancellationToken = default)
     {
         stream.ToStart();
 
@@ -122,10 +122,36 @@ public class FileUtil : IFileUtil
         }
     }
 
-    public Task WriteFile(string path, byte[] byteArray, CancellationToken cancellationToken = default)
+    public Task Write(string path, byte[] byteArray, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(System.IO.File.WriteAllBytesAsync), path);
 
         return System.IO.File.WriteAllBytesAsync(path, byteArray, cancellationToken);
+    }
+
+    public async ValueTask Move(string sourcePath, string destinationPath, CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("{name} start for {sourcePath} to {destinationPath} ...", nameof(Move), sourcePath, destinationPath);
+
+        await Copy(sourcePath, destinationPath, cancellationToken).NoSync();
+
+        // Delete the source file
+        System.IO.File.Delete(sourcePath);
+    }
+
+    public async ValueTask Copy(string sourcePath, string destinationPath, CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("{name} start for {sourcePath} to {destinationPath} ...", nameof(Copy), sourcePath, destinationPath);
+
+        // Create the destination directory if it doesn't exist
+        string destinationDirectory = Path.GetDirectoryName(destinationPath) ?? string.Empty;
+        if (!Directory.Exists(destinationDirectory))
+        {
+            Directory.CreateDirectory(destinationDirectory);
+        }
+
+        await using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+        await using var destinationStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
+        await sourceStream.CopyToAsync(destinationStream, cancellationToken).NoSync();
     }
 }
