@@ -32,10 +32,10 @@ public class FileUtilTests : FixturedUnitTest
     {
         Setup();
 
-        var path = "test.txt";
-        var expectedContent = "Test file content";
+        const string path = "test.txt";
+        const string expectedContent = "Test file content";
 
-        var content = await _fileUtil.ReadFile(path);
+        string content = await _fileUtil.Read(path, CancellationToken);
 
         content.Should().Be(expectedContent);
     }
@@ -45,10 +45,10 @@ public class FileUtilTests : FixturedUnitTest
     {
         Setup();
 
-        var path = "test.txt";
-        var expectedContent = "Test file content";
+        const string path = "test.txt";
+        const string expectedContent = "Test file content";
 
-        var content = await _fileUtil.TryRead(path);
+        string? content = await _fileUtil.TryRead(path, cancellationToken: CancellationToken);
 
         content.Should().Be(expectedContent);
     }
@@ -56,9 +56,9 @@ public class FileUtilTests : FixturedUnitTest
     [Fact]
     public async Task TryReadFile_WhenFileDoesNotExist_ShouldReturnNull()
     {
-        var path = "nonexistent.txt";
+        const string path = "nonexistent.txt";
 
-        var content = await _fileUtil.TryRead(path);
+        string? content = await _fileUtil.TryRead(path, cancellationToken: CancellationToken);
 
         content.Should().BeNull();
     }
@@ -66,23 +66,23 @@ public class FileUtilTests : FixturedUnitTest
     [Fact]
     public async Task WriteAllLines_ShouldWriteAllLinesToFile()
     {
-        var path = "testWriteAllLines.txt";
+        const string path = "testWriteAllLines.txt";
         var lines = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        await _fileUtil.WriteAllLines(path, lines);
+        await _fileUtil.WriteAllLines(path, lines, CancellationToken);
 
-        var writtenLines = await System.IO.File.ReadAllLinesAsync(path);
+        string[]? writtenLines = await System.IO.File.ReadAllLinesAsync(path, CancellationToken);
         writtenLines.Should().BeEquivalentTo(lines);
     }
 
     [Fact]
     public async Task ReadFileToBytes_ShouldReturnFileContentAsBytes()
     {
-        var path = "test.txt";
-        var expectedContent = "Test file content";
-        var expectedBytes = expectedContent.Select(c => (byte)c).ToArray();
+        const string path = "test.txt";
+        const string expectedContent = "Test file content";
+        byte[]? expectedBytes = expectedContent.Select(c => (byte)c).ToArray();
 
-        var contentBytes = await _fileUtil.ReadToBytes(path);
+        byte[]? contentBytes = await _fileUtil.ReadToBytes(path, CancellationToken);
 
         contentBytes.Should().BeEquivalentTo(expectedBytes);
     }
@@ -90,13 +90,13 @@ public class FileUtilTests : FixturedUnitTest
     [Fact]
     public async Task ReadFileToMemoryStream_ShouldReturnFileContentAsMemoryStream()
     {
-        var path = "test.txt";
-        var expectedContent = "Test file content";
+        const string path = "test.txt";
+        const string expectedContent = "Test file content";
 
-        using var memoryStream = await _fileUtil.ReadToMemoryStream(path);
+        using System.IO.MemoryStream? memoryStream = await _fileUtil.ReadToMemoryStream(path, CancellationToken);
         using var reader = new StreamReader(memoryStream);
 
-        var content = await reader.ReadToEndAsync();
+        string content = await reader.ReadToEndAsync(CancellationToken);
 
         content.Should().Be(expectedContent);
     }
@@ -107,11 +107,11 @@ public class FileUtilTests : FixturedUnitTest
         var path = "testReadFileAsLines.txt";
         var lines = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        await _fileUtil.WriteAllLines(path, lines);
+        await _fileUtil.WriteAllLines(path, lines, CancellationToken);
 
         var expectedContent = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        var content = await _fileUtil.ReadAsLines(path);
+        List<string> content = await _fileUtil.ReadAsLines(path, CancellationToken);
 
         content.Should().BeEquivalentTo(expectedContent);
     }
@@ -119,42 +119,42 @@ public class FileUtilTests : FixturedUnitTest
     [Fact]
     public async Task WriteFile_ShouldWriteContentToFile()
     {
-        var path = "testWriteFile.txt";
-        var content = "Test content to write";
+        const string path = "testWriteFile.txt";
+        const string content = "Test content to write";
 
-        await _fileUtil.Write(path, content);
+        await _fileUtil.Write(path, content, CancellationToken);
 
-        var writtenContent = await System.IO.File.ReadAllTextAsync(path);
+        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, CancellationToken);
         writtenContent.Should().Be(content);
     }
 
     [Fact]
     public async Task WriteFile_WithStream_ShouldWriteStreamContentToFile()
     {
-        var path = "testWriteFileWithStream.txt";
-        var content = "Test content to write with stream";
+        const string path = "testWriteFileWithStream.txt";
+        const string content = "Test content to write with stream";
         using var stream = new System.IO.MemoryStream();
-        using var writer = new StreamWriter(stream);
-        writer.Write(content);
-        writer.Flush();
+        await using var writer = new StreamWriter(stream);
+        await writer.WriteAsync(content);
+        await writer.FlushAsync(CancellationToken);
         stream.Position = 0;
 
-        await _fileUtil.Write(path, stream);
+        await _fileUtil.Write(path, stream, CancellationToken);
 
-        var writtenContent = await System.IO.File.ReadAllTextAsync(path);
+        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, CancellationToken);
         writtenContent.Should().Be(content);
     }
 
     [Fact]
     public async Task WriteFile_WithByteArray_ShouldWriteByteArrayToFile()
     {
-        var path = "testWriteFileWithByteArray.txt";
-        var content = "Test content to write with byte array";
-        var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        const string path = "testWriteFileWithByteArray.txt";
+        const string content = "Test content to write with byte array";
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
 
-        await _fileUtil.Write(path, bytes);
+        await _fileUtil.Write(path, bytes, cancellationToken: CancellationToken);
 
-        var writtenContent = await System.IO.File.ReadAllTextAsync(path);
+        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, CancellationToken);
         writtenContent.Should().Be(content);
     }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -25,9 +26,9 @@ public class FileUtil : IFileUtil
         _memoryStreamUtil = memoryStreamUtil;
     }
 
-    public Task<string> ReadFile(string path, CancellationToken cancellationToken = default)
+    public Task<string> Read(string path, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("{name} start for {path} ...", nameof(ReadFile), path);
+        _logger.LogDebug("{name} start for {path} ...", nameof(Read), path);
 
         return System.IO.File.ReadAllTextAsync(path, cancellationToken);
     }
@@ -71,17 +72,22 @@ public class FileUtil : IFileUtil
 
         System.IO.MemoryStream memoryStream = await _memoryStreamUtil.Get(cancellationToken).NoSync();
 
-        await using (FileStream fileStream = System.IO.File.OpenRead(path))
-        {
-            const int bufferSize = 81920;
-            var buffer = new byte[bufferSize];
-            Memory<byte> memoryBuffer = buffer.AsMemory();
-            int bytesRead;
+        const int bufferSize = 81920;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
 
-            while ((bytesRead = await fileStream.ReadAsync(memoryBuffer, cancellationToken).NoSync()) > 0)
+        try
+        {
+            await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
+
+            int bytesRead;
+            while ((bytesRead = await fileStream.ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken).NoSync()) > 0)
             {
-                await memoryStream.WriteAsync(memoryBuffer.Slice(0, bytesRead), cancellationToken).NoSync();
+                await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).NoSync();
             }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         memoryStream.ToStart();
@@ -93,9 +99,7 @@ public class FileUtil : IFileUtil
     {
         _logger.LogDebug("ReadFileInLines start for {name} ...", path);
 
-        List<string> content = (await System.IO.File.ReadAllLinesAsync(path, cancellationToken).NoSync()).ToList();
-
-        return content;
+        return (await System.IO.File.ReadAllLinesAsync(path, cancellationToken).NoSync()).ToList();
     }
 
     public Task Write(string path, string content, CancellationToken cancellationToken = default)
@@ -107,18 +111,23 @@ public class FileUtil : IFileUtil
 
     public async ValueTask Write(string path, Stream stream, CancellationToken cancellationToken = default)
     {
-        stream.ToStart();
-
         const int bufferSize = 8192;
-        var buffer = new byte[bufferSize];
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
 
-        await using (var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true))
+        try
         {
+            Memory<byte> memoryBuffer = buffer.AsMemory(0, bufferSize); // Store AsMemory result once
+            await using var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+
             int bytesRead;
-            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).NoSync()) > 0)
+            while ((bytesRead = await stream.ReadAsync(memoryBuffer, cancellationToken).NoSync()) > 0)
             {
-                await fileStream.WriteAsync(buffer, 0, bytesRead, cancellationToken).NoSync();
+                await fileStream.WriteAsync(memoryBuffer[..bytesRead], cancellationToken).NoSync();
             }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
