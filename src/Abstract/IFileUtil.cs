@@ -16,7 +16,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the file content as a string.</returns>
-    Task<string> Read(string path, CancellationToken cancellationToken = default);
+    ValueTask<string> Read(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tries to read the content of a file as a string. Logs a warning on failure.
@@ -34,7 +34,7 @@ public interface IFileUtil
     /// <param name="lines">The lines of text to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    Task WriteAllLines(string path, IEnumerable<string> lines, CancellationToken cancellationToken = default);
+    ValueTask WriteAllLines(string path, IEnumerable<string> lines, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file as a byte array.
@@ -42,7 +42,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the file content as a byte array.</returns>
-    Task<byte[]> ReadToBytes(string path, CancellationToken cancellationToken = default);
+    ValueTask<byte[]> ReadToBytes(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file into a memory stream.
@@ -67,7 +67,7 @@ public interface IFileUtil
     /// <param name="content">The content to write to the file.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    Task Write(string path, string content, CancellationToken cancellationToken = default);
+    ValueTask Write(string path, string content, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes the content of a stream to a file.
@@ -85,7 +85,7 @@ public interface IFileUtil
     /// <param name="byteArray">The byte array to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    Task Write(string path, byte[] byteArray, CancellationToken cancellationToken = default);
+    ValueTask Write(string path, byte[] byteArray, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Moves a file from one path to another. Deletes the source file after copying.

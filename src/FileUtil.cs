@@ -2,7 +2,7 @@
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -26,11 +26,42 @@ public class FileUtil : IFileUtil
         _memoryStreamUtil = memoryStreamUtil;
     }
 
-    public Task<string> Read(string path, CancellationToken cancellationToken = default)
+    public async ValueTask<string> Read(string path, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(Read), path);
 
-        return System.IO.File.ReadAllTextAsync(path, cancellationToken);
+        // Use FileStream for granular control
+        await using var fileStream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 4096, // Use an optimal buffer size
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Pre-allocate a buffer based on the file size, if known
+        int length = fileStream.Length > 0 ? (int) fileStream.Length : 4096;
+        char[] buffer = ArrayPool<char>.Shared.Rent(length);
+
+        try
+        {
+            using var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: length);
+            StringBuilder result = new(length);
+            int readCount;
+
+            // Read in chunks to reduce allocations
+            while ((readCount = await reader.ReadAsync(buffer, 0, buffer.Length).NoSync()) > 0)
+            {
+                result.Append(buffer, 0, readCount);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            return result.ToString();
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
     }
 
     public async ValueTask<string?> TryRead(string path, bool log = true, CancellationToken cancellationToken = default)
@@ -38,32 +69,116 @@ public class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} start for {path} ...", nameof(TryRead), path);
 
-        string? result = null;
-
         try
         {
-            result = await System.IO.File.ReadAllTextAsync(path, cancellationToken).NoSync();
+            // Use FileStream for better control over file operations
+            await using var fileStream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 4096, // Optimal buffer size for most files
+                options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            // Pre-allocate a buffer based on file size or use a sensible default
+            int fileLength = fileStream.Length > 0 ? (int) fileStream.Length : 4096;
+            char[] buffer = ArrayPool<char>.Shared.Rent(fileLength);
+
+            try
+            {
+                using var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: fileLength);
+                StringBuilder result = new(fileLength);
+
+                // Read file content in chunks
+                int readCount;
+                while ((readCount = await reader.ReadAsync(buffer, 0, buffer.Length).NoSync()) > 0)
+                {
+                    result.Append(buffer, 0, readCount);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                return result.ToString();
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(buffer);
+            }
         }
         catch (Exception e)
         {
             _logger.LogWarning(e, "Could not read file {path}", path);
         }
 
-        return result;
+        return null;
     }
 
-    public Task WriteAllLines(string path, IEnumerable<string> lines, CancellationToken cancellationToken = default)
+    public async ValueTask WriteAllLines(string path, IEnumerable<string> lines, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("{name} start for {path} ...", nameof(WriteAllLines), path);
 
-        return System.IO.File.WriteAllLinesAsync(path, lines, cancellationToken);
+
+        // Use FileStream for better control over the file writing process
+        await using var fileStream = new FileStream(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096, // Optimal buffer size
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Use a StreamWriter for writing text data
+        await using var writer = new StreamWriter(fileStream, Encoding.UTF8, bufferSize: 4096, leaveOpen: false);
+
+        // Iterate through the lines and write each line to the file
+        foreach (string line in lines)
+        {
+            // Write line with async support
+            await writer.WriteLineAsync(line.AsMemory(), cancellationToken).NoSync();
+
+            // Check for cancellation after each line
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        await writer.FlushAsync(cancellationToken).NoSync();
     }
 
-    public Task<byte[]> ReadToBytes(string path, CancellationToken cancellationToken = default)
+    public async ValueTask<byte[]> ReadToBytes(string path, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("ReadFile start for {name} ...", path);
+        _logger.LogDebug("ReadFile start for {path} ...", path);
 
-        return System.IO.File.ReadAllBytesAsync(path, cancellationToken);
+        // Open the file with a FileStream for precise control
+        await using var fileStream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 4096, // Optimal buffer size for performance
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Allocate buffer to match the file size if known
+        int fileLength = fileStream.Length > 0 ? (int)fileStream.Length : 4096;
+        var result = new byte[fileLength];
+
+        var totalRead = 0;
+        while (totalRead < fileLength)
+        {
+            // Read in chunks until the file is completely read
+            int bytesRead = await fileStream.ReadAsync(result.AsMemory(totalRead), cancellationToken).NoSync();
+            if (bytesRead == 0)
+            {
+                break; // End of file
+            }
+
+            totalRead += bytesRead;
+        }
+
+        // If the file size is unknown, trim the buffer to the actual size read
+        if (totalRead < fileLength)
+        {
+            Array.Resize(ref result, totalRead);
+        }
+
+        return result;
     }
 
     public async ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, CancellationToken cancellationToken = default)
@@ -97,16 +212,53 @@ public class FileUtil : IFileUtil
 
     public async ValueTask<List<string>> ReadAsLines(string path, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("ReadFileInLines start for {name} ...", path);
+        _logger.LogDebug("ReadFileInLines start for {path} ...", path);
 
-        return (await System.IO.File.ReadAllLinesAsync(path, cancellationToken).NoSync()).ToList();
+        // Open the file using FileStream for optimal control
+        await using var fileStream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 4096, // Optimal buffer size
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Use StreamReader to read lines efficiently
+        using var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+        var lines = new List<string>();
+
+        // Read lines one by one to minimize memory allocations
+        while (await reader.ReadLineAsync(cancellationToken).NoSync() is { } line)
+        {
+            lines.Add(line);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        return lines;
     }
 
-    public Task Write(string path, string content, CancellationToken cancellationToken = default)
+    public async ValueTask Write(string path, string content, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("{name} start for {path} ...", nameof(System.IO.File.WriteAllTextAsync), path);
+        _logger.LogDebug("{name} start for {path} ...", nameof(Write), path);
 
-        return System.IO.File.WriteAllTextAsync(path, content, cancellationToken);
+        // Open the file using FileStream with optimal options
+        await using var fileStream = new FileStream(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096, // Optimal buffer size for performance
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Use StreamWriter for efficient text writing
+        await using var writer = new StreamWriter(fileStream, Encoding.UTF8, bufferSize: 4096, leaveOpen: false);
+
+        // Write content to the file
+        await writer.WriteAsync(content.AsMemory(), cancellationToken).NoSync();
+
+        // Flush the writer to ensure all content is written to the file
+        await writer.FlushAsync(cancellationToken).NoSync();
     }
 
     public async ValueTask Write(string path, Stream stream, CancellationToken cancellationToken = default)
@@ -131,11 +283,24 @@ public class FileUtil : IFileUtil
         }
     }
 
-    public Task Write(string path, byte[] byteArray, CancellationToken cancellationToken = default)
+    public async ValueTask Write(string path, byte[] byteArray, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("{name} start for {path} ...", nameof(System.IO.File.WriteAllBytesAsync), path);
+        _logger.LogDebug("{name} start for {path} ...", nameof(Write), path);
 
-        return System.IO.File.WriteAllBytesAsync(path, byteArray, cancellationToken);
+        // Open the file with FileStream for optimal control over the writing process
+        await using var fileStream = new FileStream(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096, // Optimal buffer size for performance
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Write the byte array to the file
+        await fileStream.WriteAsync(byteArray.AsMemory(), cancellationToken).NoSync();
+
+        // Flush the FileStream to ensure all data is written to disk
+        await fileStream.FlushAsync(cancellationToken).NoSync();
     }
 
     public async ValueTask Move(string sourcePath, string destinationPath, CancellationToken cancellationToken = default)
