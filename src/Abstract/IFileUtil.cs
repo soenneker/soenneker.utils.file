@@ -104,4 +104,22 @@ public interface IFileUtil
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
     ValueTask Copy(string sourcePath, string destinationPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recursively copies all directories and files from the specified source directory to the destination directory.
+    /// </summary>
+    /// <param name="sourceDir">The path to the source directory to copy from.</param>
+    /// <param name="destinationDir">The path to the destination directory to copy to.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous copy operation.</returns>
+    /// <remarks>
+    /// This method first creates the entire directory structure of the source directory in the destination,
+    /// and then copies all files into the corresponding locations.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// await CopyRecursively("C:\\SourceFolder", "D:\\BackupFolder");
+    /// </code>
+    /// </example>
+    ValueTask CopyRecursively(string sourceDir, string destinationDir, CancellationToken cancellationToken = default);
 }
