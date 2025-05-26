@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Soenneker.Tests.FixturedUnit;
 using Soenneker.Utils.File.Abstract;
 using System.Collections.Generic;
