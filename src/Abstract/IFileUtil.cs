@@ -16,7 +16,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the file content as a string.</returns>
-    ValueTask<string> Read(string path, CancellationToken cancellationToken = default);
+    ValueTask<string> Read(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tries to read the content of a file as a string. Logs a warning on failure.
@@ -34,7 +34,7 @@ public interface IFileUtil
     /// <param name="lines">The lines of text to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask WriteAllLines(string path, IEnumerable<string> lines, CancellationToken cancellationToken = default);
+    ValueTask WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file as a byte array.
@@ -42,7 +42,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the file content as a byte array.</returns>
-    ValueTask<byte[]> ReadToBytes(string path, CancellationToken cancellationToken = default);
+    ValueTask<byte[]> ReadToBytes(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file into a memory stream.
@@ -50,7 +50,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing a memory stream with the file content.</returns>
-    ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, CancellationToken cancellationToken = default);
+    ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file as a list of strings, where each line is an item in the list.
@@ -58,7 +58,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing a list of strings representing the file's lines.</returns>
-    ValueTask<List<string>> ReadAsLines(string path, CancellationToken cancellationToken = default);
+    ValueTask<List<string>> ReadAsLines(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a string to a file.
@@ -67,7 +67,7 @@ public interface IFileUtil
     /// <param name="content">The content to write to the file.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Write(string path, string content, CancellationToken cancellationToken = default);
+    ValueTask Write(string path, string content, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes the content of a stream to a file.
@@ -76,7 +76,7 @@ public interface IFileUtil
     /// <param name="stream">The stream containing the content to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Write(string path, Stream stream, CancellationToken cancellationToken = default);
+    ValueTask Write(string path, Stream stream, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a byte array to a file.
@@ -85,7 +85,7 @@ public interface IFileUtil
     /// <param name="byteArray">The byte array to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Write(string path, byte[] byteArray, CancellationToken cancellationToken = default);
+    ValueTask Write(string path, byte[] byteArray, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Moves a file from one path to another. Deletes the source file after copying.
@@ -94,7 +94,7 @@ public interface IFileUtil
     /// <param name="destinationPath">The path of the destination file.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Move(string sourcePath, string destinationPath, CancellationToken cancellationToken = default);
+    ValueTask Move(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Copies a file from one path to another.
@@ -103,7 +103,7 @@ public interface IFileUtil
     /// <param name="destinationPath">The path of the destination file.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Copy(string sourcePath, string destinationPath, CancellationToken cancellationToken = default);
+    ValueTask Copy(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Recursively copies all directories and files from the specified source directory to the destination directory.
@@ -121,5 +121,5 @@ public interface IFileUtil
     /// await CopyRecursively("C:\\SourceFolder", "D:\\BackupFolder");
     /// </code>
     /// </example>
-    ValueTask CopyRecursively(string sourceDir, string destinationDir, CancellationToken cancellationToken = default);
+    ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default);
 }

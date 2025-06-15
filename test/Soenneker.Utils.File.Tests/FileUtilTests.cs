@@ -35,7 +35,7 @@ public class FileUtilTests : FixturedUnitTest
         const string path = "test.txt";
         const string expectedContent = "Test file content";
 
-        string content = await _fileUtil.Read(path, CancellationToken);
+        string content = await _fileUtil.Read(path, cancellationToken: CancellationToken);
 
         content.Should().Be(expectedContent);
     }
@@ -69,7 +69,7 @@ public class FileUtilTests : FixturedUnitTest
         const string path = "testWriteAllLines.txt";
         var lines = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        await _fileUtil.WriteAllLines(path, lines, CancellationToken);
+        await _fileUtil.WriteAllLines(path, lines, cancellationToken: CancellationToken);
 
         string[]? writtenLines = await System.IO.File.ReadAllLinesAsync(path, CancellationToken);
         writtenLines.Should().BeEquivalentTo(lines);
@@ -82,7 +82,7 @@ public class FileUtilTests : FixturedUnitTest
         const string expectedContent = "Test file content";
         byte[]? expectedBytes = expectedContent.Select(c => (byte)c).ToArray();
 
-        byte[]? contentBytes = await _fileUtil.ReadToBytes(path, CancellationToken);
+        byte[]? contentBytes = await _fileUtil.ReadToBytes(path, cancellationToken: CancellationToken);
 
         contentBytes.Should().BeEquivalentTo(expectedBytes);
     }
@@ -93,7 +93,7 @@ public class FileUtilTests : FixturedUnitTest
         const string path = "test.txt";
         const string expectedContent = "Test file content";
 
-        using System.IO.MemoryStream? memoryStream = await _fileUtil.ReadToMemoryStream(path, CancellationToken);
+        using System.IO.MemoryStream? memoryStream = await _fileUtil.ReadToMemoryStream(path, cancellationToken: CancellationToken);
         using var reader = new StreamReader(memoryStream);
 
         string content = await reader.ReadToEndAsync(CancellationToken);
@@ -107,11 +107,11 @@ public class FileUtilTests : FixturedUnitTest
         var path = "testReadFileAsLines.txt";
         var lines = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        await _fileUtil.WriteAllLines(path, lines, CancellationToken);
+        await _fileUtil.WriteAllLines(path, lines, cancellationToken: CancellationToken);
 
         var expectedContent = new List<string> { "Line 1", "Line 2", "Line 3" };
 
-        List<string> content = await _fileUtil.ReadAsLines(path, CancellationToken);
+        List<string> content = await _fileUtil.ReadAsLines(path, cancellationToken: CancellationToken);
 
         content.Should().BeEquivalentTo(expectedContent);
     }
@@ -122,7 +122,7 @@ public class FileUtilTests : FixturedUnitTest
         const string path = "testWriteFile.txt";
         const string content = "Test content to write";
 
-        await _fileUtil.Write(path, content, CancellationToken);
+        await _fileUtil.Write(path, content, cancellationToken: CancellationToken);
 
         string? writtenContent = await System.IO.File.ReadAllTextAsync(path, CancellationToken);
         writtenContent.Should().Be(content);
@@ -139,7 +139,7 @@ public class FileUtilTests : FixturedUnitTest
         await writer.FlushAsync(CancellationToken);
         stream.Position = 0;
 
-        await _fileUtil.Write(path, stream, CancellationToken);
+        await _fileUtil.Write(path, stream, cancellationToken: CancellationToken);
 
         string? writtenContent = await System.IO.File.ReadAllTextAsync(path, CancellationToken);
         writtenContent.Should().Be(content);
