@@ -15,8 +15,7 @@ public static class FileUtilRegistrar
     /// </summary>
     public static IServiceCollection AddFileUtilAsScoped(this IServiceCollection services)
     {
-        services.AddMemoryStreamUtilAsSingleton()
-                .TryAddScoped<IFileUtil, FileUtil>();
+        services.AddMemoryStreamUtilAsSingleton().TryAddScoped<IFileUtil, FileUtil>();
 
         return services;
     }
@@ -26,8 +25,7 @@ public static class FileUtilRegistrar
     /// </summary>
     public static IServiceCollection AddFileUtilAsSingleton(this IServiceCollection services)
     {
-        services.AddMemoryStreamUtilAsSingleton()
-                .TryAddSingleton<IFileUtil, FileUtil>();
+        services.AddMemoryStreamUtilAsSingleton().TryAddSingleton<IFileUtil, FileUtil>();
 
         return services;
     }

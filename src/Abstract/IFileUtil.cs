@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -122,4 +123,63 @@ public interface IFileUtil
     /// </code>
     /// </example>
     ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Appends text to the end of an existing file, creating the file if it does not exist.
+    /// </summary>
+    /// <param name="path">The full path of the file to append to.</param>
+    /// <param name="content">The text to append.</param>
+    /// <param name="log">Emit a debug-level log message when <see langword="true"/> (default).</param>
+    /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
+    /// <returns>A <see cref="ValueTask"/> that completes when the write finishes.</returns>
+    ValueTask Append(string path, string content, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Appends a sequence of lines to the end of an existing file, creating the file if it does not exist.
+    /// </summary>
+    /// <param name="path">The full path of the file to append to.</param>
+    /// <param name="lines">Lines that will be written, each followed by the platform newline.</param>
+    /// <param name="log">Emit a debug-level log message when <see langword="true"/> (default).</param>
+    /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
+    /// <returns>A <see cref="ValueTask"/> that completes when all lines are written.</returns>
+    ValueTask Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the specified file if it exists.
+    /// </summary>
+    /// <param name="path">Full path of the file to delete.</param>
+    /// <param name="ignoreMissing">
+    /// When <see langword="true"/> (default), no exception is thrown if the file is not found.
+    /// </param>
+    /// <param name="log">Emit a debug-level log message when <see langword="true"/> (default).</param>
+    /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
+    /// <returns>A <see cref="ValueTask"/> that completes when the deletion (if any) finishes.</returns>
+    ValueTask Delete(string path, bool ignoreMissing = true, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks whether a file exists at the given path.
+    /// </summary>
+    /// <param name="path">Full path to test.</param>
+    /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
+    /// <returns><see langword="true"/> if the file exists; otherwise <see langword="false"/>.</returns>
+    ValueTask<bool> FileExists(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves the size of a file in bytes.
+    /// </summary>
+    /// <param name="path">Full path of the file.</param>
+    /// <returns>
+    /// The file size in bytes, or <see langword="null"/> if the file does not exist.
+    /// </returns>
+    ValueTask<long?> GetFileSize(string path);
+
+    /// <summary>
+    /// Retrieves the UTC timestamp of the most recent modification to a file.
+    /// </summary>
+    /// <param name="path">Full path of the file.</param>
+    /// <returns>
+    /// A <see cref="DateTimeOffset"/> representing last modification time, or
+    /// <see langword="null"/> if the file does not exist.
+    /// </returns>
+    ValueTask<DateTimeOffset?> GetLastModified(string path);
 }
