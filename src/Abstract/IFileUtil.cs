@@ -182,4 +182,22 @@ public interface IFileUtil
     /// <see langword="null"/> if the file does not exist.
     /// </returns>
     ValueTask<DateTimeOffset?> GetLastModified(string path);
+
+    /// <summary>
+    /// Attempts to delete <paramref name="path"/> (regardless of existence).  
+    /// Returns <c>true</c> on success; <c>false</c> when an exception occurs.
+    /// </summary>
+    ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attempts to delete <paramref name="path"/> when it exists.
+    /// Swallows any exception and returns whether the delete succeeded.
+    /// </summary>
+    ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes <paramref name="path"/> if it exists.
+    /// Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.
+    /// </summary>
+    ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
 }

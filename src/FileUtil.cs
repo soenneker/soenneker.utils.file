@@ -33,10 +33,10 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} start for {path} ...", nameof(Read), path);
 
-        await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            bufferSize: _defaultBuffer, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: _defaultBuffer,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-        int length = fileStream.Length > 0 ? (int)fileStream.Length : _defaultBuffer;
+        int length = fileStream.Length > 0 ? (int) fileStream.Length : _defaultBuffer;
         char[] buffer = ArrayPool<char>.Shared.Rent(length);
 
         try
@@ -101,7 +101,7 @@ public sealed class FileUtil : IFileUtil
         await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, _defaultBuffer,
             options: FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-        int fileLength = fileStream.Length > 0 ? (int)fileStream.Length : _defaultBuffer;
+        int fileLength = fileStream.Length > 0 ? (int) fileStream.Length : _defaultBuffer;
         byte[] result = new byte[fileLength];
         int totalRead = 0;
 
@@ -256,22 +256,23 @@ public sealed class FileUtil : IFileUtil
             _logger.LogDebug("{name} start for {path} ...", nameof(Delete), path);
 
         await Task.Run(() =>
-        {
-            if (!System.IO.File.Exists(path))
-            {
-                if (!ignoreMissing)
-                    throw new FileNotFoundException("File not found", path);
-                return;
-            }
+                  {
+                      if (!System.IO.File.Exists(path))
+                      {
+                          if (!ignoreMissing)
+                              throw new FileNotFoundException("File not found", path);
+                          return;
+                      }
 
-            System.IO.File.Delete(path);
-        }, cancellationToken).NoSync();
+                      System.IO.File.Delete(path);
+                  }, cancellationToken)
+                  .NoSync();
     }
 
-    public async ValueTask<bool> FileExists(string path, CancellationToken cancellationToken = default)
+    public ValueTask<bool> FileExists(string path, CancellationToken cancellationToken = default)
     {
         // Path check is fast – still wrap in Task.FromResult for consistency
-        return await Task.FromResult(System.IO.File.Exists(path)).NoSync();
+        return ValueTask.FromResult(System.IO.File.Exists(path));
     }
 
     public async ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default)
@@ -295,9 +296,46 @@ public sealed class FileUtil : IFileUtil
         }
     }
 
-    public ValueTask<long?> GetFileSize(string path)
-        => new(System.IO.File.Exists(path) ? new FileInfo(path).Length : null);
+    public ValueTask<long?> GetFileSize(string path) => new(System.IO.File.Exists(path) ? new FileInfo(path).Length : null);
 
-    public ValueTask<DateTimeOffset?> GetLastModified(string path)
-        => new(System.IO.File.Exists(path) ? new FileInfo(path).LastWriteTimeUtc : (DateTimeOffset?)null);
+    public ValueTask<DateTimeOffset?> GetLastModified(string path) =>
+        new(System.IO.File.Exists(path) ? new FileInfo(path).LastWriteTimeUtc : (DateTimeOffset?) null);
+
+    public async ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (!await FileExists(path, cancellationToken).NoSync())
+            return false;
+
+        if (log)
+            _logger.LogDebug("{name} start for {path} …", nameof(DeleteIfExists), path);
+
+        await Delete(path, ignoreMissing: false, log: false, cancellationToken).NoSync();
+        return true;
+    }
+
+    public async ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (!await FileExists(path, cancellationToken).NoSync())
+            return false;
+
+        return await TryDelete(path, log, cancellationToken).NoSync();
+    }
+
+    public async ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (log)
+            _logger.LogDebug("Trying to delete {path} …", path);
+
+        try
+        {
+            await Delete(path, ignoreMissing: true, log: false, cancellationToken).NoSync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (log)
+                _logger.LogError(ex, "Exception deleting {path}", path);
+            return false;
+        }
+    }
 }
