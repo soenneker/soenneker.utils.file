@@ -17,7 +17,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the file content as a string.</returns>
-    ValueTask<string> Read(string path, bool log = true, CancellationToken cancellationToken = default);
+    Task<string> Read(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tries to read the content of a file as a string. Logs a warning on failure.
@@ -35,7 +35,7 @@ public interface IFileUtil
     /// <param name="lines">The lines of text to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default);
+    Task WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file as a byte array.
@@ -43,7 +43,7 @@ public interface IFileUtil
     /// <param name="path">The path of the file to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the file content as a byte array.</returns>
-    ValueTask<byte[]> ReadToBytes(string path, bool log = true, CancellationToken cancellationToken = default);
+    Task<byte[]> ReadToBytes(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads the entire content of a file into a memory stream.
@@ -68,7 +68,7 @@ public interface IFileUtil
     /// <param name="content">The content to write to the file.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Write(string path, string content, bool log = true, CancellationToken cancellationToken = default);
+    Task Write(string path, string content, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes the content of a stream to a file.
@@ -86,7 +86,7 @@ public interface IFileUtil
     /// <param name="byteArray">The byte array to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    ValueTask Write(string path, byte[] byteArray, bool log = true, CancellationToken cancellationToken = default);
+    Task Write(string path, byte[] byteArray, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Moves a file from one path to another. Deletes the source file after copying.
@@ -132,7 +132,7 @@ public interface IFileUtil
     /// <param name="log">Emit a debug-level log message when <see langword="true"/> (default).</param>
     /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
     /// <returns>A <see cref="ValueTask"/> that completes when the write finishes.</returns>
-    ValueTask Append(string path, string content, bool log = true, CancellationToken cancellationToken = default);
+    Task Append(string path, string content, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Appends a sequence of lines to the end of an existing file, creating the file if it does not exist.
@@ -142,7 +142,7 @@ public interface IFileUtil
     /// <param name="log">Emit a debug-level log message when <see langword="true"/> (default).</param>
     /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
     /// <returns>A <see cref="ValueTask"/> that completes when all lines are written.</returns>
-    ValueTask Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default);
+    Task Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the specified file if it exists.

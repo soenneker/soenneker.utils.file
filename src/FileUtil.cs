@@ -17,7 +17,7 @@ namespace Soenneker.Utils.File;
 /// <inheritdoc cref="IFileUtil"/>
 public sealed class FileUtil : IFileUtil
 {
-    private const int _defaultBuffer = 4096;
+    private const int _defaultBuffer = 80 * 1024; // 80 kB
 
     private readonly ILogger<FileUtil> _logger;
     private readonly IMemoryStreamUtil _memoryStreamUtil;
@@ -28,35 +28,12 @@ public sealed class FileUtil : IFileUtil
         _memoryStreamUtil = memoryStreamUtil;
     }
 
-    public async ValueTask<string> Read(string path, bool log = true, CancellationToken cancellationToken = default)
+    public Task<string> Read(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(Read), path);
+        if (log) 
+            _logger.LogDebug("{name} for {path}", nameof(Read), path);
 
-        await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        int length = fileStream.Length > 0 ? (int) fileStream.Length : _defaultBuffer;
-        char[] buffer = ArrayPool<char>.Shared.Rent(length);
-
-        try
-        {
-            using var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: length);
-            StringBuilder result = new(length);
-
-            int readCount;
-            while ((readCount = await reader.ReadAsync(buffer, cancellationToken).NoSync()) > 0)
-            {
-                result.Append(buffer, 0, readCount);
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            return result.ToString();
-        }
-        finally
-        {
-            ArrayPool<char>.Shared.Return(buffer);
-        }
+        return System.IO.File.ReadAllTextAsync(path, cancellationToken);
     }
 
     public async ValueTask<string?> TryRead(string path, bool log = true, CancellationToken cancellationToken = default)
@@ -73,158 +50,87 @@ public sealed class FileUtil : IFileUtil
         }
     }
 
+
     public async ValueTask<List<string>> ReadAsLines(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(ReadAsLines), path);
+        if (log) _logger.LogDebug("{name} for {path}", nameof(ReadAsLines), path);
 
-        await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        using var reader = new StreamReader(fileStream, Encoding.UTF8, true, _defaultBuffer);
         var lines = new List<string>();
+        using var reader = new StreamReader(path, Encoding.UTF8, true, _defaultBuffer);
 
-        while (await reader.ReadLineAsync(cancellationToken).NoSync() is { } line)
-        {
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
             lines.Add(line);
-            cancellationToken.ThrowIfCancellationRequested();
-        }
 
         return lines;
     }
 
-    public async ValueTask<byte[]> ReadToBytes(string path, bool log = true, CancellationToken cancellationToken = default)
+    public Task<byte[]> ReadToBytes(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(ReadToBytes), path);
+            _logger.LogDebug("{name} for {path}", nameof(ReadToBytes), path);
 
-        await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        int fileLength = fileStream.Length > 0 ? (int) fileStream.Length : _defaultBuffer;
-        byte[] result = new byte[fileLength];
-        int totalRead = 0;
-
-        while (totalRead < fileLength)
-        {
-            int bytesRead = await fileStream.ReadAsync(result.AsMemory(totalRead), cancellationToken).NoSync();
-            if (bytesRead == 0)
-                break;
-            totalRead += bytesRead;
-        }
-
-        if (totalRead < fileLength)
-            Array.Resize(ref result, totalRead);
-
-        return result;
+        return System.IO.File.ReadAllBytesAsync(path, cancellationToken);
     }
+
 
     public async ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(ReadToMemoryStream), path);
+            _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
 
-        var memoryStream = await _memoryStreamUtil.Get(cancellationToken).NoSync();
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(_defaultBuffer * 20); // 80 kB
+        System.IO.MemoryStream destination = await _memoryStreamUtil.Get(cancellationToken).NoSync();
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(_defaultBuffer);
 
         try
         {
-            await using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, buffer.Length, true);
-            int bytesRead;
-            while ((bytesRead = await fileStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).NoSync()) > 0)
-            {
-                await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).NoSync();
-            }
+            await using FileStream source = System.IO.File.OpenRead(path);
+            await source.CopyToAsync(destination, buffer.Length, cancellationToken);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        memoryStream.ToStart();
-        return memoryStream;
+        destination.ToStart();
+        return destination;
     }
 
-    public async ValueTask Write(string path, string content, bool log = true, CancellationToken cancellationToken = default)
+    public Task Write(string path, string content, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(Write), path);
-
-        await using var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        await using var writer = new StreamWriter(fileStream, Encoding.UTF8, _defaultBuffer, leaveOpen: false);
-        await writer.WriteAsync(content.AsMemory(), cancellationToken).NoSync();
-        await writer.FlushAsync(cancellationToken).NoSync();
+        if (log) _logger.LogDebug("{name} for {path}", nameof(Write), path);
+        return System.IO.File.WriteAllTextAsync(path, content, Encoding.UTF8, cancellationToken);
     }
 
-    public async ValueTask Write(string path, Stream stream, bool log = true, CancellationToken cancellationToken = default)
+    public async ValueTask Write(string path, Stream source, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(Write), path);
+        if (log) _logger.LogDebug("{name} for {path}", nameof(Write), path);
 
-        await using var destination = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, _defaultBuffer, true);
-        await stream.CopyToAsync(destination, cancellationToken).NoSync();
+        await using FileStream dest = System.IO.File.Create(path);
+        await source.CopyToAsync(dest, _defaultBuffer, cancellationToken).NoSync();
     }
 
-    public async ValueTask Write(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
+    public Task Write(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(Write), path);
-
-        await using var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        await fileStream.WriteAsync(bytes, cancellationToken).NoSync();
-        await fileStream.FlushAsync(cancellationToken).NoSync();
+        if (log) _logger.LogDebug("{name} for {path}", nameof(Write), path);
+        return System.IO.File.WriteAllBytesAsync(path, bytes, cancellationToken);
     }
 
-    public async ValueTask WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
+    public Task WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(WriteAllLines), path);
-
-        await using var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using var writer = new StreamWriter(fileStream, Encoding.UTF8, _defaultBuffer);
-
-        foreach (string line in lines)
-        {
-            await writer.WriteLineAsync(line.AsMemory(), cancellationToken).NoSync();
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-
-        await writer.FlushAsync(cancellationToken).NoSync();
+        if (log) _logger.LogDebug("{name} for {path}", nameof(WriteAllLines), path);
+        return System.IO.File.WriteAllLinesAsync(path, lines, Encoding.UTF8, cancellationToken);
     }
 
-    public async ValueTask Append(string path, string content, bool log = true, CancellationToken cancellationToken = default)
+    public Task Append(string path, string content, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(Append), path);
-
-        await using var fileStream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.None, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using var writer = new StreamWriter(fileStream, Encoding.UTF8, _defaultBuffer);
-        await writer.WriteAsync(content.AsMemory(), cancellationToken).NoSync();
-        await writer.FlushAsync(cancellationToken).NoSync();
+        if (log) _logger.LogDebug("{name} for {path}", nameof(Append), path);
+        return System.IO.File.AppendAllTextAsync(path, content, Encoding.UTF8, cancellationToken);
     }
 
-    public async ValueTask Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
+    public Task Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogDebug("{name} start for {path} ...", nameof(Append), path);
-
-        await using var fileStream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.None, _defaultBuffer,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using var writer = new StreamWriter(fileStream, Encoding.UTF8, _defaultBuffer);
-
-        foreach (var line in lines)
-        {
-            await writer.WriteLineAsync(line.AsMemory(), cancellationToken).NoSync();
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-
-        await writer.FlushAsync(cancellationToken).NoSync();
+        if (log) _logger.LogDebug("{name} for {path}", nameof(Append), path);
+        return System.IO.File.AppendAllLinesAsync(path, lines, Encoding.UTF8, cancellationToken);
     }
 
     public async ValueTask Copy(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default)
@@ -236,9 +142,9 @@ public sealed class FileUtil : IFileUtil
         if (!Directory.Exists(destDir))
             Directory.CreateDirectory(destDir);
 
-        await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, _defaultBuffer, true);
-        await using var dest = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, _defaultBuffer, true);
-        await source.CopyToAsync(dest, cancellationToken).NoSync();
+        await using FileStream src = System.IO.File.OpenRead(sourcePath);
+        await using FileStream dst = System.IO.File.Create(destinationPath);
+        await src.CopyToAsync(dst, _defaultBuffer, cancellationToken).NoSync();
     }
 
     public async ValueTask Move(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default)
@@ -299,7 +205,7 @@ public sealed class FileUtil : IFileUtil
     public ValueTask<long?> GetFileSize(string path) => new(System.IO.File.Exists(path) ? new FileInfo(path).Length : null);
 
     public ValueTask<DateTimeOffset?> GetLastModified(string path) =>
-        new(System.IO.File.Exists(path) ? new FileInfo(path).LastWriteTimeUtc : (DateTimeOffset?) null);
+        new(System.IO.File.Exists(path) ? new FileInfo(path).LastWriteTimeUtc : null);
 
     public async ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
