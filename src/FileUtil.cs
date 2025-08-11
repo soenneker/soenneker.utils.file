@@ -50,7 +50,6 @@ public sealed class FileUtil : IFileUtil
         }
     }
 
-
     public async ValueTask<List<string>> ReadAsLines(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log) _logger.LogDebug("{name} for {path}", nameof(ReadAsLines), path);

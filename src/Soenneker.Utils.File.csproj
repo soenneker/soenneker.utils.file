@@ -38,6 +38,8 @@
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
         
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.8" />
+        
+        <PackageReference Include="Soenneker.Extensions.Stream" Version="3.0.89" />
         <PackageReference Include="Soenneker.Utils.MemoryStream" Version="3.0.1267" />
     </ItemGroup>
 </Project>
