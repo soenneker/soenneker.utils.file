@@ -203,6 +203,9 @@ public interface IFileUtil
     /// </summary>
     ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
 
+    ValueTask<HashSet<string>> ReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true, bool ignoreEmpty = true,
+        bool log = true, CancellationToken cancellationToken = default);
+
     ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
         bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default);
 
