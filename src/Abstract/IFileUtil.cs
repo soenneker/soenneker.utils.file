@@ -168,20 +168,22 @@ public interface IFileUtil
     /// Retrieves the size of a file in bytes.
     /// </summary>
     /// <param name="path">Full path of the file.</param>
+    /// <param name="cancellationToken"></param>
     /// <returns>
     /// The file size in bytes, or <see langword="null"/> if the file does not exist.
     /// </returns>
-    ValueTask<long?> GetFileSize(string path);
+    ValueTask<long?> GetFileSize(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the UTC timestamp of the most recent modification to a file.
     /// </summary>
     /// <param name="path">Full path of the file.</param>
+    /// <param name="cancellationToken"></param>
     /// <returns>
     /// A <see cref="DateTimeOffset"/> representing last modification time, or
     /// <see langword="null"/> if the file does not exist.
     /// </returns>
-    ValueTask<DateTimeOffset?> GetLastModified(string path);
+    ValueTask<DateTimeOffset?> GetLastModified(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempts to delete <paramref name="path"/> (regardless of existence).  
@@ -200,4 +202,9 @@ public interface IFileUtil
     /// Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.
     /// </summary>
     ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
+
+    ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
+        bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default);
+
+    ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken cancellationToken = default);
 }
