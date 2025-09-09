@@ -6,10 +6,12 @@ using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.MemoryStream.Abstract;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Soenneker.Extensions.String;
 
 namespace Soenneker.Utils.File;
 
@@ -39,7 +41,8 @@ public sealed class FileUtil : IFileUtil
     {
         try
         {
-            return await Read(path, log, cancellationToken).NoSync();
+            return await Read(path, log, cancellationToken)
+                .NoSync();
         }
         catch (Exception e)
         {
@@ -55,7 +58,7 @@ public sealed class FileUtil : IFileUtil
 
         long len = System.IO.File.Exists(path) ? new FileInfo(path).Length : 0L;
 
-        List<string> lines = len > 0 ? new List<string>((int) Math.Min(int.MaxValue, len / 48 + 16)) : [];
+        List<string> lines = len > 0 ? new List<string>((int)Math.Min(int.MaxValue, len / 48 + 16)) : [];
 
         using var reader = new StreamReader(path, Encoding.UTF8, true, _defaultBuffer);
         while (await reader.ReadLineAsync(ct) is { } line) lines.Add(line);
@@ -70,16 +73,16 @@ public sealed class FileUtil : IFileUtil
         return System.IO.File.ReadAllBytesAsync(path, cancellationToken);
     }
 
-
     public async ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log) _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
 
         var fi = new FileInfo(path);
-        System.IO.MemoryStream ms = await _memoryStreamUtil.Get(cancellationToken).NoSync(); // assumed cleared/position=0
+        System.IO.MemoryStream ms = await _memoryStreamUtil.Get(cancellationToken)
+            .NoSync(); // assumed cleared/position=0
 
-        if (fi is {Exists: true, Length: <= int.MaxValue} && fi.Length > ms.Capacity)
-            ms.Capacity = (int) fi.Length; // capacity hint only
+        if (fi is { Exists: true, Length: <= int.MaxValue } && fi.Length > ms.Capacity)
+            ms.Capacity = (int)fi.Length; // capacity hint only
 
         await using var fs = new FileStream(path, new FileStreamOptions
         {
@@ -90,7 +93,8 @@ public sealed class FileUtil : IFileUtil
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         });
 
-        await fs.CopyToAsync(ms, _defaultBuffer, cancellationToken).NoSync();
+        await fs.CopyToAsync(ms, _defaultBuffer, cancellationToken)
+            .NoSync();
         ms.ToStart();
         return ms;
     }
@@ -122,7 +126,8 @@ public sealed class FileUtil : IFileUtil
         }
 
         await using var dest = new FileStream(path, fso);
-        await source.CopyToAsync(dest, _defaultBuffer, ct).NoSync();
+        await source.CopyToAsync(dest, _defaultBuffer, ct)
+            .NoSync();
     }
 
     public Task Write(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
@@ -184,7 +189,8 @@ public sealed class FileUtil : IFileUtil
             PreallocationSize = Math.Min(srcInfo.Length, int.MaxValue) // safe on all platforms
         });
 
-        await src.CopyToAsync(dst, _defaultBuffer, ct).NoSync();
+        await src.CopyToAsync(dst, _defaultBuffer, ct)
+            .NoSync();
     }
 
     public async ValueTask Move(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default)
@@ -192,8 +198,10 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} start from {source} to {dest} ...", nameof(Move), sourcePath, destinationPath);
 
-        await Copy(sourcePath, destinationPath, log, cancellationToken).NoSync();
-        await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken).NoSync();
+        await Copy(sourcePath, destinationPath, log, cancellationToken)
+            .NoSync();
+        await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)
+            .NoSync();
     }
 
     public ValueTask Delete(string path, bool ignoreMissing = true, bool log = true, CancellationToken ct = default)
@@ -231,14 +239,14 @@ public sealed class FileUtil : IFileUtil
         // IO is not CPU-bound: keep concurrency modest to avoid disk thrash.
         int dop = Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
 
-        await Parallel.ForEachAsync(files, new ParallelOptions {MaxDegreeOfParallelism = dop, CancellationToken = ct}, async (file, token) =>
+        await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = dop, CancellationToken = ct }, async (file, token) =>
         {
             string rel = Path.GetRelativePath(sourceDir, file);
             string destFile = Path.Combine(destinationDir, rel);
 
             string? parent = Path.GetDirectoryName(destFile);
 
-            if (!string.IsNullOrEmpty(parent))
+            if (parent.HasContent())
                 Directory.CreateDirectory(parent); // fast, idempotent
 
             await Copy(file, destFile, log: false, token);
@@ -248,32 +256,36 @@ public sealed class FileUtil : IFileUtil
     public ValueTask<long?> GetFileSize(string path, CancellationToken ct = default) => RunInlineOrOffload(() =>
     {
         var fi = new FileInfo(path);
-        return fi.Exists ? fi.Length : (long?) null;
+        return fi.Exists ? fi.Length : (long?)null;
     }, ct);
 
     public ValueTask<DateTimeOffset?> GetLastModified(string path, CancellationToken ct = default) => RunInlineOrOffload(() =>
     {
         var fi = new FileInfo(path);
-        return fi.Exists ? fi.LastWriteTimeUtc : (DateTimeOffset?) null;
+        return fi.Exists ? fi.LastWriteTimeUtc : (DateTimeOffset?)null;
     }, ct);
 
     public async ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (!await FileExists(path, cancellationToken).NoSync())
+        if (!await FileExists(path, cancellationToken)
+                .NoSync())
             return false;
 
         if (log) _logger.LogDebug("{name} start for {path} …", nameof(DeleteIfExists), path);
 
-        await Delete(path, ignoreMissing: false, log: false, cancellationToken).NoSync();
+        await Delete(path, ignoreMissing: false, log: false, cancellationToken)
+            .NoSync();
         return true;
     }
 
     public async ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (!await FileExists(path, cancellationToken).NoSync())
+        if (!await FileExists(path, cancellationToken)
+                .NoSync())
             return false;
 
-        return await TryDelete(path, log, cancellationToken).NoSync();
+        return await TryDelete(path, log, cancellationToken)
+            .NoSync();
     }
 
     public async ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default)
@@ -283,7 +295,8 @@ public sealed class FileUtil : IFileUtil
 
         try
         {
-            await Delete(path, ignoreMissing: true, log: false, cancellationToken).NoSync();
+            await Delete(path, ignoreMissing: true, log: false, cancellationToken)
+                .NoSync();
             return true;
         }
         catch (Exception ex)
@@ -300,7 +313,7 @@ public sealed class FileUtil : IFileUtil
         if (log) _logger.LogDebug("{name} for {path}", nameof(ReadToHashSet), path);
 
         long len = System.IO.File.Exists(path) ? new FileInfo(path).Length : 0L;
-        int capacity = len > 0 ? (int) Math.Min(int.MaxValue, len / 32 + 16) : 0;
+        int capacity = len > 0 ? (int)Math.Min(int.MaxValue, len / 32 + 16) : 0;
 
         HashSet<string> set = capacity > 0
             ? new HashSet<string>(capacity, comparer ?? StringComparer.Ordinal)
@@ -308,7 +321,8 @@ public sealed class FileUtil : IFileUtil
 
         using var reader = new StreamReader(path, Encoding.UTF8, true, _defaultBuffer);
 
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        while (await reader.ReadLineAsync(cancellationToken)
+                   .NoSync() is { } line)
         {
             if (trim)
                 line = line.Trim();
@@ -330,7 +344,8 @@ public sealed class FileUtil : IFileUtil
     {
         try
         {
-            return await ReadToHashSet(path, comparer, trim, ignoreEmpty, log, cancellationToken);
+            return await ReadToHashSet(path, comparer, trim, ignoreEmpty, log, cancellationToken)
+                .NoSync();
         }
         catch (Exception ex)
         {
@@ -340,21 +355,84 @@ public sealed class FileUtil : IFileUtil
         }
     }
 
-    static bool OnUiContext() => SynchronizationContext.Current is not null;
+    private static bool OnUiContext() => SynchronizationContext.Current is not null;
 
     // Use this for tiny sync ops that must never block UI:
-    static ValueTask RunInlineOrOffload(Action action, CancellationToken ct)
+    private static ValueTask RunInlineOrOffload(Action action, CancellationToken ct)
     {
-        if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-        if (OnUiContext()) return new(Task.Run(action, ct));
+        if (ct.IsCancellationRequested)
+            return ValueTask.FromCanceled(ct);
+
+        if (OnUiContext())
+            return new ValueTask(Task.Run(action, ct));
+
         action();
         return ValueTask.CompletedTask;
     }
 
-    static ValueTask<T> RunInlineOrOffload<T>(Func<T> func, CancellationToken ct)
+    private static ValueTask<T> RunInlineOrOffload<T>(Func<T> func, CancellationToken ct)
     {
-        if (ct.IsCancellationRequested) return ValueTask.FromCanceled<T>(ct);
-        if (OnUiContext()) return new(Task.Run(func, ct));
-        return new(func());
+        if (ct.IsCancellationRequested)
+            return ValueTask.FromCanceled<T>(ct);
+
+        if (OnUiContext())
+            return new ValueTask<T>(Task.Run(func, ct));
+
+        return new ValueTask<T>(func());
+    }
+
+    [Pure]
+    public List<FileInfo> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true)
+    {
+        if (log)
+            _logger.LogDebug("Getting all FileInfos in {directory} recursively...", directory);
+
+        var list = new List<FileInfo>();
+
+        try
+        {
+            var diTop = new DirectoryInfo(directory);
+            foreach (FileInfo fi in diTop.EnumerateFiles())
+            {
+                try
+                {
+                    list.Add(new FileInfo(fi.FullName));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("Unauthorized Exception for {fullName}", fi.FullName);
+                }
+            }
+
+            foreach (DirectoryInfo di in diTop.EnumerateDirectories("*"))
+            {
+                try
+                {
+                    foreach (FileInfo fi in di.EnumerateFiles("*", SearchOption.AllDirectories))
+                    {
+                        try
+                        {
+                            list.Add(new FileInfo(fi.FullName));
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            _logger.LogWarning("Unauthorized Exception for {fullName}", fi.FullName);
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("Unauthorized Exception for {fullName}", di.FullName);
+                }
+            }
+        }
+        catch (Exception e) when (e is DirectoryNotFoundException || e is UnauthorizedAccessException || e is PathTooLongException)
+        {
+            _logger.LogWarning(e, "{message}", e.Message);
+        }
+
+        if (log)
+            _logger.LogDebug("Completed getting all files in {directory}, number: {number}", directory, list.Count);
+        return list;
     }
 }
