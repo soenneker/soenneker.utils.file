@@ -219,7 +219,7 @@ public sealed class FileUtil : IFileUtil
         }, ct);
     }
 
-    public ValueTask<bool> FileExists(string path, CancellationToken ct = default) => RunInlineOrOffload(() => System.IO.File.Exists(path), ct);
+    public ValueTask<bool> Exists(string path, CancellationToken ct = default) => RunInlineOrOffload(() => System.IO.File.Exists(path), ct);
 
     public async ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken ct = default)
     {
@@ -253,7 +253,7 @@ public sealed class FileUtil : IFileUtil
         });
     }
 
-    public ValueTask<long?> GetFileSize(string path, CancellationToken ct = default) => RunInlineOrOffload(() =>
+    public ValueTask<long?> GetSize(string path, CancellationToken ct = default) => RunInlineOrOffload(() =>
     {
         var fi = new FileInfo(path);
         return fi.Exists ? fi.Length : (long?)null;
@@ -267,7 +267,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (!await FileExists(path, cancellationToken)
+        if (!await Exists(path, cancellationToken)
                 .NoSync())
             return false;
 
@@ -280,7 +280,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (!await FileExists(path, cancellationToken)
+        if (!await Exists(path, cancellationToken)
                 .NoSync())
             return false;
 
@@ -384,7 +384,7 @@ public sealed class FileUtil : IFileUtil
     [Pure]
     public string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true)
     {
-        if (log) 
+        if (log)
             _logger.LogDebug("Getting all files from directory ({directory}) recursively...", directory);
 
         return Directory.GetFiles(directory, "*.*", SearchOption.AllDirectories);

@@ -71,6 +71,7 @@ public interface IFileUtil
     /// </summary>
     /// <param name="path">The path of the file to write to.</param>
     /// <param name="content">The content to write to the file.</param>
+    /// <param name="log"></param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
     Task Write(string path, string content, bool log = true, CancellationToken cancellationToken = default);
@@ -172,7 +173,7 @@ public interface IFileUtil
     /// <param name="path">Full path to test.</param>
     /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
     /// <returns><see langword="true"/> if the file exists; otherwise <see langword="false"/>.</returns>
-    ValueTask<bool> FileExists(string path, CancellationToken cancellationToken = default);
+    ValueTask<bool> Exists(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the size of a file in bytes.
@@ -182,7 +183,7 @@ public interface IFileUtil
     /// <returns>
     /// The file size in bytes, or <see langword="null"/> if the file does not exist.
     /// </returns>
-    ValueTask<long?> GetFileSize(string path, CancellationToken cancellationToken = default);
+    ValueTask<long?> GetSize(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the UTC timestamp of the most recent modification to a file.
