@@ -382,6 +382,15 @@ public sealed class FileUtil : IFileUtil
     }
 
     [Pure]
+    public string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true)
+    {
+        if (log) 
+            _logger.LogDebug("Getting all files from directory ({directory}) recursively...", directory);
+
+        return Directory.GetFiles(directory, "*.*", SearchOption.AllDirectories);
+    }
+
+    [Pure]
     public List<FileInfo> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true)
     {
         if (log)

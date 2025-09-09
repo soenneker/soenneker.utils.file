@@ -221,5 +221,7 @@ public interface IFileUtil
 
     ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken cancellationToken = default);
 
+    string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true);
+
     List<FileInfo> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true);
 }
