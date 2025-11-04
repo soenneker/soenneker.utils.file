@@ -40,6 +40,6 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-rc.2.25502.107" />
         
         <PackageReference Include="Soenneker.Extensions.Stream" Version="4.0.93" />
-        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="4.0.1291" />
+        <PackageReference Include="Soenneker.Utils.MemoryStream" Version="4.0.1292" />
     </ItemGroup>
 </Project>
