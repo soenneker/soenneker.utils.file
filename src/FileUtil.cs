@@ -12,7 +12,8 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Soenneker.Utils.File.Utils;
+using Soenneker.Invocations.Actions;
+using Soenneker.Invocations.Funcs;
 
 namespace Soenneker.Utils.File;
 
@@ -407,8 +408,8 @@ public sealed class FileUtil : IFileUtil
 
         if (OnUiContext())
         {
-            Task t = Task.Factory.StartNew(static s => ((ActionState)s!).Invoke(), new ActionState(action, state), ct, TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default);
+            Task t = Task.Factory.StartNew(static s => ((ActionInvocation)s!).Invoke(), new ActionInvocation(action, state), ct,
+                TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
 
             return new ValueTask(t);
         }
@@ -424,8 +425,8 @@ public sealed class FileUtil : IFileUtil
 
         if (OnUiContext())
         {
-            Task<T> t = Task.Factory.StartNew(static s => ((FuncState<T>)s!).Invoke(), new FuncState<T>(func, state), ct, TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default);
+            Task<T> t = Task.Factory.StartNew(static s => ((FuncInvocation<T>)s!).Invoke(), new FuncInvocation<T>(func, state), ct,
+                TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
 
             return new ValueTask<T>(t);
         }
