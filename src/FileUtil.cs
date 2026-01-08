@@ -22,7 +22,7 @@ public sealed class FileUtil : IFileUtil
     private const int _defaultBuffer = 128 * 1024; // 128kB
 
     // Predictable UTF-8 without BOM; also avoids repeatedly touching Encoding.UTF8 (minor).
-    private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
 
     private readonly ILogger<FileUtil> _logger;
     private readonly IMemoryStreamUtil _memoryStreamUtil;
