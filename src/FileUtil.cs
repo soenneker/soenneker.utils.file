@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Stream;
+using Soenneker.Extensions.String;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Utils.File.Abstract;
@@ -11,14 +12,17 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Soenneker.Extensions.String;
+using Soenneker.Utils.File.Utils;
 
 namespace Soenneker.Utils.File;
 
 /// <inheritdoc cref="IFileUtil"/>
 public sealed class FileUtil : IFileUtil
 {
-    private const int _defaultBuffer = 128 * 1024; // 128 kB
+    private const int _defaultBuffer = 128 * 1024; // 128kB
+
+    // Predictable UTF-8 without BOM; also avoids repeatedly touching Encoding.UTF8 (minor).
+    private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private readonly ILogger<FileUtil> _logger;
     private readonly IMemoryStreamUtil _memoryStreamUtil;
@@ -48,20 +52,29 @@ public sealed class FileUtil : IFileUtil
         {
             if (log)
                 _logger.LogWarning(e, "Could not read file {path}", path);
+
             return null;
         }
     }
 
     public async ValueTask<List<string>> ReadAsLines(string path, bool log = true, CancellationToken ct = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(ReadAsLines), path);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(ReadAsLines), path);
 
-        long len = System.IO.File.Exists(path) ? new FileInfo(path).Length : 0L;
+        // Avoid File.Exists + new FileInfo double-hit.
+        var fi = new FileInfo(path);
+        long len = fi.Exists ? fi.Length : 0L;
 
-        List<string> lines = len > 0 ? new List<string>((int)Math.Min(int.MaxValue, len / 48 + 16)) : [];
+        // Heuristic capacity to reduce list growth. Still just a heuristic.
+        int capacity = len > 0 ? (int)Math.Min(int.MaxValue, (len / 48) + 16) : 0;
+        List<string> lines = capacity > 0 ? new List<string>(capacity) : new List<string>();
 
-        using var reader = new StreamReader(path, Encoding.UTF8, true, _defaultBuffer);
-        while (await reader.ReadLineAsync(ct) is { } line) lines.Add(line);
+        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _defaultBuffer);
+
+        while (await reader.ReadLineAsync(ct) is { } line)
+            lines.Add(line);
+
         return lines;
     }
 
@@ -75,14 +88,24 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
 
         var fi = new FileInfo(path);
-        System.IO.MemoryStream ms = await _memoryStreamUtil.Get(cancellationToken)
-            .NoSync(); // assumed cleared/position=0
 
-        if (fi is { Exists: true, Length: <= int.MaxValue } && fi.Length > ms.Capacity)
-            ms.Capacity = (int)fi.Length; // capacity hint only
+        System.IO.MemoryStream ms = await _memoryStreamUtil.Get(cancellationToken)
+                                                           .NoSync();
+
+        // Never assume pooled streams are cleared.
+        ms.Position = 0;
+        ms.SetLength(0);
+
+        if (fi.Exists && fi.Length is > 0 and <= int.MaxValue)
+        {
+            int needed = (int)fi.Length;
+            if (needed > ms.Capacity)
+                ms.Capacity = needed;
+        }
 
         await using var fs = new FileStream(path, new FileStreamOptions
         {
@@ -94,20 +117,24 @@ public sealed class FileUtil : IFileUtil
         });
 
         await fs.CopyToAsync(ms, _defaultBuffer, cancellationToken)
-            .NoSync();
+                .NoSync();
+
         ms.ToStart();
         return ms;
     }
 
     public Task Write(string path, string content, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(Write), path);
-        return System.IO.File.WriteAllTextAsync(path, content, Encoding.UTF8, cancellationToken);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(Write), path);
+
+        return System.IO.File.WriteAllTextAsync(path, content, _utf8NoBom, cancellationToken);
     }
 
     public async ValueTask Write(string path, Stream source, bool log = true, CancellationToken ct = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(Write), path);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(Write), path);
 
         var fso = new FileStreamOptions
         {
@@ -120,14 +147,14 @@ public sealed class FileUtil : IFileUtil
 
         if (source.CanSeek)
         {
-            long remaining = Math.Max(0, source.Length - source.Position);
-            // Guard against extremely large values if you care, else just assign
-            fso.PreallocationSize = remaining;
+            long remaining = source.Length - source.Position;
+            if (remaining > 0)
+                fso.PreallocationSize = remaining;
         }
 
         await using var dest = new FileStream(path, fso);
         await source.CopyToAsync(dest, _defaultBuffer, ct)
-            .NoSync();
+                    .NoSync();
     }
 
     public Task Write(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
@@ -143,28 +170,31 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(WriteAllLines), path);
 
-        return System.IO.File.WriteAllLinesAsync(path, lines, Encoding.UTF8, cancellationToken);
+        return System.IO.File.WriteAllLinesAsync(path, lines, _utf8NoBom, cancellationToken);
     }
-
 
     public Task Append(string path, string content, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(Append), path);
-        return System.IO.File.AppendAllTextAsync(path, content, Encoding.UTF8, cancellationToken);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(Append), path);
+
+        return System.IO.File.AppendAllTextAsync(path, content, _utf8NoBom, cancellationToken);
     }
 
     public Task Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(Append), path);
-        return System.IO.File.AppendAllLinesAsync(path, lines, Encoding.UTF8, cancellationToken);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(Append), path);
+
+        return System.IO.File.AppendAllLinesAsync(path, lines, _utf8NoBom, cancellationToken);
     }
 
     public async ValueTask Copy(string srcPath, string dstPath, bool log = true, CancellationToken ct = default)
     {
-        if (log) _logger.LogDebug("{name} {src} -> {dst}", nameof(Copy), srcPath, dstPath);
+        if (log)
+            _logger.LogDebug("{name} {src} -> {dst}", nameof(Copy), srcPath, dstPath);
 
         string? dir = Path.GetDirectoryName(dstPath);
-
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
@@ -186,11 +216,11 @@ public sealed class FileUtil : IFileUtil
             Share = FileShare.None,
             BufferSize = _defaultBuffer,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            PreallocationSize = Math.Min(srcInfo.Length, int.MaxValue) // safe on all platforms
+            PreallocationSize = srcInfo.Exists ? Math.Min(srcInfo.Length, int.MaxValue) : 0
         });
 
         await src.CopyToAsync(dst, _defaultBuffer, ct)
-            .NoSync();
+                 .NoSync();
     }
 
     public async ValueTask Move(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default)
@@ -206,37 +236,42 @@ public sealed class FileUtil : IFileUtil
 
     public ValueTask Delete(string path, bool ignoreMissing = true, bool log = true, CancellationToken ct = default)
     {
-        if (log) _logger.LogDebug("{name} start for {path} ...", nameof(Delete), path);
-        return RunInlineOrOffload(() =>
+        if (log)
+            _logger.LogDebug("{name} start for {path} ...", nameof(Delete), path);
+
+        // No closure: state passed in.
+        return RunInlineOrOffload(static s =>
         {
-            if (!System.IO.File.Exists(path))
+            (string p, bool ignore) = ((string Path, bool Ignore))s!;
+            if (!System.IO.File.Exists(p))
             {
-                if (!ignoreMissing) throw new FileNotFoundException("File not found", path);
+                if (!ignore)
+                    throw new FileNotFoundException("File not found", p);
+
                 return;
             }
 
-            System.IO.File.Delete(path);
-        }, ct);
+            System.IO.File.Delete(p);
+        }, (path, ignoreMissing), ct);
     }
 
-    public ValueTask<bool> Exists(string path, CancellationToken ct = default) => RunInlineOrOffload(() => System.IO.File.Exists(path), ct);
+    public ValueTask<bool> Exists(string path, CancellationToken ct = default) =>
+        RunInlineOrOffload(static s => System.IO.File.Exists((string)s!), path, ct);
 
     public async ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken ct = default)
     {
         if (log)
             _logger.LogDebug("{name} {source} -> {dest}", nameof(CopyRecursively), sourceDir, destinationDir);
 
-        // Directory pass is unnecessary if we ensure parents before each file copy.
         var opts = new EnumerationOptions
         {
             RecurseSubdirectories = true,
             IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.ReparsePoint // optional: avoid loops
+            AttributesToSkip = FileAttributes.ReparsePoint
         };
 
         IEnumerable<string> files = Directory.EnumerateFiles(sourceDir, "*", opts);
 
-        // IO is not CPU-bound: keep concurrency modest to avoid disk thrash.
         int dop = Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
 
         await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = dop, CancellationToken = ct }, async (file, token) =>
@@ -245,25 +280,27 @@ public sealed class FileUtil : IFileUtil
             string destFile = Path.Combine(destinationDir, rel);
 
             string? parent = Path.GetDirectoryName(destFile);
-
             if (parent.HasContent())
-                Directory.CreateDirectory(parent); // fast, idempotent
+                Directory.CreateDirectory(parent);
 
-            await Copy(file, destFile, log: false, token);
+            await Copy(file, destFile, log: false, token)
+                .NoSync();
         });
     }
 
-    public ValueTask<long?> GetSize(string path, CancellationToken ct = default) => RunInlineOrOffload(() =>
-    {
-        var fi = new FileInfo(path);
-        return fi.Exists ? fi.Length : (long?)null;
-    }, ct);
+    public ValueTask<long?> GetSize(string path, CancellationToken ct = default) =>
+        RunInlineOrOffload(static s =>
+        {
+            var fi = new FileInfo((string)s!);
+            return fi.Exists ? fi.Length : (long?)null;
+        }, path, ct);
 
-    public ValueTask<DateTimeOffset?> GetLastModified(string path, CancellationToken ct = default) => RunInlineOrOffload(() =>
-    {
-        var fi = new FileInfo(path);
-        return fi.Exists ? fi.LastWriteTimeUtc : (DateTimeOffset?)null;
-    }, ct);
+    public ValueTask<DateTimeOffset?> GetLastModified(string path, CancellationToken ct = default) =>
+        RunInlineOrOffload(static s =>
+        {
+            var fi = new FileInfo((string)s!);
+            return fi.Exists ? fi.LastWriteTimeUtc : (DateTimeOffset?)null;
+        }, path, ct);
 
     public async ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
@@ -271,7 +308,8 @@ public sealed class FileUtil : IFileUtil
                 .NoSync())
             return false;
 
-        if (log) _logger.LogDebug("{name} start for {path} …", nameof(DeleteIfExists), path);
+        if (log)
+            _logger.LogDebug("{name} start for {path} …", nameof(DeleteIfExists), path);
 
         await Delete(path, ignoreMissing: false, log: false, cancellationToken)
             .NoSync();
@@ -303,6 +341,7 @@ public sealed class FileUtil : IFileUtil
         {
             if (log)
                 _logger.LogError(ex, "Exception deleting {path}", path);
+
             return false;
         }
     }
@@ -310,19 +349,22 @@ public sealed class FileUtil : IFileUtil
     public async ValueTask<HashSet<string>> ReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true, bool ignoreEmpty = true,
         bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log) _logger.LogDebug("{name} for {path}", nameof(ReadToHashSet), path);
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(ReadToHashSet), path);
 
-        long len = System.IO.File.Exists(path) ? new FileInfo(path).Length : 0L;
-        int capacity = len > 0 ? (int)Math.Min(int.MaxValue, len / 32 + 16) : 0;
+        var fi = new FileInfo(path);
+        long len = fi.Exists ? fi.Length : 0L;
 
-        HashSet<string> set = capacity > 0
-            ? new HashSet<string>(capacity, comparer ?? StringComparer.Ordinal)
-            : new HashSet<string>(comparer ?? StringComparer.Ordinal);
+        int capacity = len > 0 ? (int)Math.Min(int.MaxValue, (len / 32) + 16) : 0;
 
-        using var reader = new StreamReader(path, Encoding.UTF8, true, _defaultBuffer);
+        comparer ??= StringComparer.Ordinal;
+
+        HashSet<string> set = capacity > 0 ? new HashSet<string>(capacity, comparer) : new HashSet<string>(comparer);
+
+        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _defaultBuffer);
 
         while (await reader.ReadLineAsync(cancellationToken)
-                   .NoSync() is { } line)
+                           .NoSync() is { } line)
         {
             if (trim)
                 line = line.Trim();
@@ -337,7 +379,7 @@ public sealed class FileUtil : IFileUtil
     }
 
     public ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken ct = default) =>
-        RunInlineOrOffload(() => Directory.CreateDirectory(path), ct);
+        RunInlineOrOffload(static s => Directory.CreateDirectory((string)s!), path, ct);
 
     public async ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
         bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default)
@@ -351,35 +393,46 @@ public sealed class FileUtil : IFileUtil
         {
             if (log)
                 _logger.LogWarning(ex, "Could not read file {path} to HashSet", path);
+
             return null;
         }
     }
 
     private static bool OnUiContext() => SynchronizationContext.Current is not null;
 
-    // Use this for tiny sync ops that must never block UI:
-    private static ValueTask RunInlineOrOffload(Action action, CancellationToken ct)
+    private static ValueTask RunInlineOrOffload(Action<object?> action, object? state, CancellationToken ct)
     {
         if (ct.IsCancellationRequested)
             return ValueTask.FromCanceled(ct);
 
         if (OnUiContext())
-            return new ValueTask(Task.Run(action, ct));
+        {
+            Task t = Task.Factory.StartNew(static s => ((ActionState)s!).Invoke(), new ActionState(action, state), ct, TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default);
 
-        action();
+            return new ValueTask(t);
+        }
+
+        action(state);
         return ValueTask.CompletedTask;
     }
 
-    private static ValueTask<T> RunInlineOrOffload<T>(Func<T> func, CancellationToken ct)
+    private static ValueTask<T> RunInlineOrOffload<T>(Func<object?, T> func, object? state, CancellationToken ct)
     {
         if (ct.IsCancellationRequested)
             return ValueTask.FromCanceled<T>(ct);
 
         if (OnUiContext())
-            return new ValueTask<T>(Task.Run(func, ct));
+        {
+            Task<T> t = Task.Factory.StartNew(static s => ((FuncState<T>)s!).Invoke(), new FuncState<T>(func, state), ct, TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default);
 
-        return new ValueTask<T>(func());
+            return new ValueTask<T>(t);
+        }
+
+        return new ValueTask<T>(func(state));
     }
+
 
     [Pure]
     public string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true)
@@ -400,48 +453,27 @@ public sealed class FileUtil : IFileUtil
 
         try
         {
-            var diTop = new DirectoryInfo(directory);
-            foreach (FileInfo fi in diTop.EnumerateFiles())
+            var opts = new EnumerationOptions
             {
-                try
-                {
-                    list.Add(new FileInfo(fi.FullName));
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    _logger.LogWarning("Unauthorized Exception for {fullName}", fi.FullName);
-                }
-            }
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint
+            };
 
-            foreach (DirectoryInfo di in diTop.EnumerateDirectories("*"))
+            foreach (string file in Directory.EnumerateFiles(directory, "*", opts))
             {
-                try
-                {
-                    foreach (FileInfo fi in di.EnumerateFiles("*", SearchOption.AllDirectories))
-                    {
-                        try
-                        {
-                            list.Add(new FileInfo(fi.FullName));
-                        }
-                        catch (UnauthorizedAccessException)
-                        {
-                            _logger.LogWarning("Unauthorized Exception for {fullName}", fi.FullName);
-                        }
-                    }
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    _logger.LogWarning("Unauthorized Exception for {fullName}", di.FullName);
-                }
+                // FileInfo construction is cheap; the access is when you touch properties.
+                list.Add(new FileInfo(file));
             }
         }
-        catch (Exception e) when (e is DirectoryNotFoundException || e is UnauthorizedAccessException || e is PathTooLongException)
+        catch (Exception e) when (e is DirectoryNotFoundException or UnauthorizedAccessException or PathTooLongException)
         {
             _logger.LogWarning(e, "{message}", e.Message);
         }
 
         if (log)
             _logger.LogDebug("Completed getting all files in {directory}, number: {number}", directory, list.Count);
+
         return list;
     }
 }
