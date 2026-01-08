@@ -12,8 +12,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Soenneker.Invocations.Actions;
-using Soenneker.Invocations.Funcs;
+using Soenneker.Utils.ExecutionContexts;
 
 namespace Soenneker.Utils.File;
 
@@ -241,7 +240,7 @@ public sealed class FileUtil : IFileUtil
             _logger.LogDebug("{name} start for {path} ...", nameof(Delete), path);
 
         // No closure: state passed in.
-        return RunInlineOrOffload(static s =>
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
             (string p, bool ignore) = ((string Path, bool Ignore))s!;
             if (!System.IO.File.Exists(p))
@@ -257,7 +256,7 @@ public sealed class FileUtil : IFileUtil
     }
 
     public ValueTask<bool> Exists(string path, CancellationToken ct = default) =>
-        RunInlineOrOffload(static s => System.IO.File.Exists((string)s!), path, ct);
+        ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.File.Exists((string)s!), path, ct);
 
     public async ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken ct = default)
     {
@@ -290,14 +289,14 @@ public sealed class FileUtil : IFileUtil
     }
 
     public ValueTask<long?> GetSize(string path, CancellationToken ct = default) =>
-        RunInlineOrOffload(static s =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
             var fi = new FileInfo((string)s!);
             return fi.Exists ? fi.Length : (long?)null;
         }, path, ct);
 
     public ValueTask<DateTimeOffset?> GetLastModified(string path, CancellationToken ct = default) =>
-        RunInlineOrOffload(static s =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
             var fi = new FileInfo((string)s!);
             return fi.Exists ? fi.LastWriteTimeUtc : (DateTimeOffset?)null;
@@ -380,7 +379,7 @@ public sealed class FileUtil : IFileUtil
     }
 
     public ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken ct = default) =>
-        RunInlineOrOffload(static s => Directory.CreateDirectory((string)s!), path, ct);
+        ExecutionContextUtil.RunInlineOrOffload(static s => Directory.CreateDirectory((string)s!), path, ct);
 
     public async ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
         bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default)
@@ -398,42 +397,6 @@ public sealed class FileUtil : IFileUtil
             return null;
         }
     }
-
-    private static bool OnUiContext() => SynchronizationContext.Current is not null;
-
-    private static ValueTask RunInlineOrOffload(Action<object?> action, object? state, CancellationToken ct)
-    {
-        if (ct.IsCancellationRequested)
-            return ValueTask.FromCanceled(ct);
-
-        if (OnUiContext())
-        {
-            Task t = Task.Factory.StartNew(static s => ((ActionInvocation)s!).Invoke(), new ActionInvocation(action, state), ct,
-                TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-
-            return new ValueTask(t);
-        }
-
-        action(state);
-        return ValueTask.CompletedTask;
-    }
-
-    private static ValueTask<T> RunInlineOrOffload<T>(Func<object?, T> func, object? state, CancellationToken ct)
-    {
-        if (ct.IsCancellationRequested)
-            return ValueTask.FromCanceled<T>(ct);
-
-        if (OnUiContext())
-        {
-            Task<T> t = Task.Factory.StartNew(static s => ((FuncInvocation<T>)s!).Invoke(), new FuncInvocation<T>(func, state), ct,
-                TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-
-            return new ValueTask<T>(t);
-        }
-
-        return new ValueTask<T>(func(state));
-    }
-
 
     [Pure]
     public string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true)
