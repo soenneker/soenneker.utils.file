@@ -478,24 +478,15 @@ public sealed class FileUtil : IFileUtil
     }
 
     [Pure]
-    public string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true)
+    public ValueTask<string[]> GetAllFileNamesInDirectoryRecursively(string directory, bool log = true, CancellationToken ct = default)
     {
         if (log)
             _logger.LogDebug("Getting all files from directory ({directory}) recursively...", directory);
 
-        return Directory.GetFiles(directory, "*.*", SearchOption.AllDirectories);
-    }
-
-    [Pure]
-    public List<FileInfo> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true)
-    {
-        if (log)
-            _logger.LogDebug("Getting all FileInfos in {directory} recursively...", directory);
-
-        var list = new List<FileInfo>();
-
-        try
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
+            var (dir, token) = ((string Directory, CancellationToken Token))s!;
+
             var opts = new EnumerationOptions
             {
                 RecurseSubdirectories = true,
@@ -503,20 +494,53 @@ public sealed class FileUtil : IFileUtil
                 AttributesToSkip = FileAttributes.ReparsePoint
             };
 
-            foreach (string file in Directory.EnumerateFiles(directory, "*", opts))
+            var list = new List<string>();
+
+            foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
             {
-                // FileInfo construction is cheap; the access is when you touch properties.
-                list.Add(new FileInfo(file));
+                token.ThrowIfCancellationRequested();
+                list.Add(file);
             }
-        }
-        catch (Exception e) when (e is DirectoryNotFoundException or UnauthorizedAccessException or PathTooLongException)
-        {
-            _logger.LogWarning(e, "{message}", e.Message);
-        }
 
+            return list.ToArray();
+        }, (directory, ct), ct);
+    }
+
+    public ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(
+        string directory,
+        bool log = true,
+        CancellationToken ct = default)
+    {
         if (log)
-            _logger.LogDebug("Completed getting all files in {directory}, number: {number}", directory, list.Count);
+            _logger.LogDebug("Getting all FileInfos in {directory} recursively...", directory);
 
-        return list;
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var (dir, token) = ((string Directory, CancellationToken Token))s!;
+
+            var list = new List<FileInfo>();
+
+            try
+            {
+                var opts = new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true,
+                    AttributesToSkip = FileAttributes.ReparsePoint
+                };
+
+                foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                {
+                    token.ThrowIfCancellationRequested();
+                    list.Add(new FileInfo(file));
+                }
+            }
+            catch (Exception e) when (e is DirectoryNotFoundException or UnauthorizedAccessException or PathTooLongException)
+            {
+                // Can't log here (static delegate). Caller can log after await if desired.
+            }
+
+            return list;
+        }, (directory, ct), ct);
     }
 }
