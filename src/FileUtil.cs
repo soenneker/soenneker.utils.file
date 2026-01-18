@@ -326,6 +326,85 @@ public sealed class FileUtil : IFileUtil
             .NoSync();
     }
 
+    public ValueTask DeleteAll(string directory, bool log = true, CancellationToken ct = default)
+    {
+        if (log)
+            _logger.LogDebug("{name} start for {directory} ...", nameof(DeleteAll), directory);
+
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+
+            foreach (string file in Directory.EnumerateFiles(dir))
+            {
+                token.ThrowIfCancellationRequested();
+                System.IO.File.Delete(file);
+            }
+        }, (directory, ct), ct);
+    }
+
+    public async ValueTask<bool> TryDeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (log)
+            _logger.LogDebug("Trying to delete all files in {directory} ...", directory);
+
+        try
+        {
+            await DeleteAll(directory, log: false, cancellationToken)
+                .NoSync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (log)
+                _logger.LogError(ex, "Exception deleting all files in {directory}", directory);
+
+            return false;
+        }
+    }
+
+    public async ValueTask<bool> TryRemoveReadonlyAndArchiveAttributesFromAll(string directory, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (log)
+            _logger.LogDebug("Trying to remove readonly/archive attributes from {directory} ...", directory);
+
+        try
+        {
+            await ExecutionContextUtil.RunInlineOrOffload(static s =>
+            {
+                (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+
+                var opts = new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true,
+                    AttributesToSkip = FileAttributes.ReparsePoint
+                };
+
+                foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    FileAttributes attrs = System.IO.File.GetAttributes(file);
+                    FileAttributes updated = attrs & ~(FileAttributes.ReadOnly | FileAttributes.Archive);
+
+                    if (updated != attrs)
+                        System.IO.File.SetAttributes(file, updated);
+                }
+            }, (directory, cancellationToken), cancellationToken)
+                .NoSync();
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (log)
+                _logger.LogError(ex, "Exception removing readonly/archive attributes in {directory}", directory);
+
+            return false;
+        }
+    }
+
     public async ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)

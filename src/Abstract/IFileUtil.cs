@@ -209,6 +209,24 @@ public interface IFileUtil
     ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Deletes all files in <paramref name="directory"/>.
+    /// </summary>
+    ValueTask DeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attempts to delete all files in <paramref name="directory"/>.
+    /// Returns <c>false</c> if an exception occurs.
+    /// </summary>
+    ValueTask<bool> TryDeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attempts to remove the <see cref="FileAttributes.ReadOnly"/> and
+    /// <see cref="FileAttributes.Archive"/> flags from all files under <paramref name="directory"/>.
+    /// Returns <c>false</c> if an exception occurs.
+    /// </summary>
+    ValueTask<bool> TryRemoveReadonlyAndArchiveAttributesFromAll(string directory, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes <paramref name="path"/> if it exists.
     /// Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.
     /// </summary>
