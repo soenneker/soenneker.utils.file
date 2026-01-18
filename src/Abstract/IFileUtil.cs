@@ -227,6 +227,13 @@ public interface IFileUtil
     ValueTask<bool> TryRemoveReadonlyAndArchiveAttributesFromAll(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Renames all files and directories under <paramref name="directory"/> by replacing
+    /// <paramref name="oldValue"/> with <paramref name="newValue"/> in their names.
+    /// </summary>
+    ValueTask RenameAllInDirectoryRecursively(string directory, string oldValue, string newValue, bool log = true,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes <paramref name="path"/> if it exists.
     /// Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.
     /// </summary>
@@ -240,7 +247,8 @@ public interface IFileUtil
 
     ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken cancellationToken = default);
 
-    string[] GetAllFileNamesInDirectoryRecursively(string directory, bool log = true);
+    ValueTask<string[]> GetAllFileNamesInDirectoryRecursively(string directory, bool log = true, CancellationToken cancellationToken = default);
 
-    List<FileInfo> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true);
+    ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true,
+        CancellationToken cancellationToken = default);
 }

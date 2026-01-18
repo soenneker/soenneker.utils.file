@@ -405,6 +405,60 @@ public sealed class FileUtil : IFileUtil
         }
     }
 
+    public ValueTask RenameAllInDirectoryRecursively(string directory, string oldValue, string newValue, bool log = true, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(oldValue))
+            throw new ArgumentException("oldValue must be non-empty", nameof(oldValue));
+
+        if (log)
+            _logger.LogDebug("{name} {old} -> {new} in {directory} ...", nameof(RenameAllInDirectoryRecursively), oldValue, newValue, directory);
+
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var (dir, oldVal, newVal, token) = ((string Directory, string OldValue, string NewValue, CancellationToken Token))s!;
+
+            var opts = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint
+            };
+
+            foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+            {
+                token.ThrowIfCancellationRequested();
+
+                string fileName = Path.GetFileName(file);
+                if (!fileName.Contains(oldVal, StringComparison.Ordinal))
+                    continue;
+
+                string newFileName = fileName.Replace(oldVal, newVal, StringComparison.Ordinal);
+                string? parent = Path.GetDirectoryName(file);
+                string dest = parent is null ? newFileName : Path.Combine(parent, newFileName);
+
+                System.IO.File.Move(file, dest, overwrite: false);
+            }
+
+            var directories = new List<string>(Directory.EnumerateDirectories(dir, "*", opts));
+            directories.Sort(static (a, b) => b.Length.CompareTo(a.Length));
+
+            foreach (string subdir in directories)
+            {
+                token.ThrowIfCancellationRequested();
+
+                string name = Path.GetFileName(subdir);
+                if (!name.Contains(oldVal, StringComparison.Ordinal))
+                    continue;
+
+                string newName = name.Replace(oldVal, newVal, StringComparison.Ordinal);
+                string? parent = Path.GetDirectoryName(subdir);
+                string dest = parent is null ? newName : Path.Combine(parent, newName);
+
+                Directory.Move(subdir, dest);
+            }
+        }, (directory, oldValue, newValue, ct), ct);
+    }
+
     public async ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
