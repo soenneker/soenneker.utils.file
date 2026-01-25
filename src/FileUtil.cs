@@ -285,7 +285,7 @@ public sealed class FileUtil : IFileUtil
 
             await Copy(file, destFile, log: false, token)
                 .NoSync();
-        });
+        }).NoSync();
     }
 
     public ValueTask<long?> GetSize(string path, CancellationToken ct = default) =>
