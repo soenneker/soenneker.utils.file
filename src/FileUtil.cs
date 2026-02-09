@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Stream;
 using Soenneker.Extensions.String;
 using Soenneker.Extensions.Task;
@@ -458,6 +458,13 @@ public sealed class FileUtil : IFileUtil
             }
         }, (directory, oldValue, newValue, ct), ct);
     }
+
+    public ValueTask SetLastWriteTimeUtc(string path, DateTime dateTimeUtc, CancellationToken ct = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var (p, dt) = ((string Path, DateTime Dt))s!;
+            System.IO.File.SetLastWriteTimeUtc(p, dt);
+        }, (path, dateTimeUtc), ct);
 
     public async ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default)
     {

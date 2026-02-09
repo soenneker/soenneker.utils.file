@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -238,6 +238,14 @@ public interface IFileUtil
     /// Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.
     /// </summary>
     ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the UTC date and time that the specified file was last written to.
+    /// </summary>
+    /// <param name="path">The file to set the timestamp for.</param>
+    /// <param name="dateTimeUtc">The UTC date and time.</param>
+    /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
+    ValueTask SetLastWriteTimeUtc(string path, DateTime dateTimeUtc, CancellationToken cancellationToken = default);
 
     ValueTask<HashSet<string>> ReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true, bool ignoreEmpty = true,
         bool log = true, CancellationToken cancellationToken = default);
