@@ -26,7 +26,7 @@
     <PackageReference Include="xUnit.v3" Version="3.2.2" /></ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Soenneker.Utils.File.csproj" />
+        <ProjectReference Include="..\..\src\Soenneker.Utils.File\Soenneker.Utils.File.csproj" />
     </ItemGroup>
 
     <ItemGroup>
