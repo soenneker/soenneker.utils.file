@@ -15,7 +15,7 @@
         <Version Condition="'$(BUILD_VERSION)' != ''">$(BUILD_VERSION)</Version>
         <AssemblyName>Soenneker.Utils.File</AssemblyName>
         <PackageId>Soenneker.Utils.File</PackageId>
-        <PackageTags>file async util c# .net dotnet</PackageTags>
+        <PackageTags>file async util c# .net dotnet fileutil ifileutil</PackageTags>
         <Copyright>Copyright © 2023-2026 Jake Soenneker</Copyright>
         <Authors>Jake Soenneker</Authors>
         <Company>https://soenneker.com</Company>
