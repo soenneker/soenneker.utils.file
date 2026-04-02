@@ -195,7 +195,8 @@ public sealed class FileUtil : IFileUtil
             _logger.LogDebug("{name} {src} -> {dst}", nameof(Copy), srcPath, dstPath);
 
         string? dir = Path.GetDirectoryName(dstPath);
-        if (!string.IsNullOrEmpty(dir))
+
+        if (dir.HasContent())
             Directory.CreateDirectory(dir);
 
         var srcInfo = new FileInfo(srcPath);
@@ -275,17 +276,18 @@ public sealed class FileUtil : IFileUtil
         int dop = Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
 
         await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = dop, CancellationToken = ct }, async (file, token) =>
-        {
-            string rel = Path.GetRelativePath(sourceDir, file);
-            string destFile = Path.Combine(destinationDir, rel);
+                      {
+                          string rel = Path.GetRelativePath(sourceDir, file);
+                          string destFile = Path.Combine(destinationDir, rel);
 
-            string? parent = Path.GetDirectoryName(destFile);
-            if (parent.HasContent())
-                Directory.CreateDirectory(parent);
+                          string? parent = Path.GetDirectoryName(destFile);
+                          if (parent.HasContent())
+                              Directory.CreateDirectory(parent);
 
-            await Copy(file, destFile, log: false, token)
-                .NoSync();
-        }).NoSync();
+                          await Copy(file, destFile, log: false, token)
+                              .NoSync();
+                      })
+                      .NoSync();
     }
 
     public ValueTask<long?> GetSize(string path, CancellationToken ct = default) =>
@@ -371,28 +373,28 @@ public sealed class FileUtil : IFileUtil
         try
         {
             await ExecutionContextUtil.RunInlineOrOffload(static s =>
-            {
-                (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+                                      {
+                                          (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
 
-                var opts = new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    IgnoreInaccessible = true,
-                    AttributesToSkip = FileAttributes.ReparsePoint
-                };
+                                          var opts = new EnumerationOptions
+                                          {
+                                              RecurseSubdirectories = true,
+                                              IgnoreInaccessible = true,
+                                              AttributesToSkip = FileAttributes.ReparsePoint
+                                          };
 
-                foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
-                {
-                    token.ThrowIfCancellationRequested();
+                                          foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                                          {
+                                              token.ThrowIfCancellationRequested();
 
-                    FileAttributes attrs = System.IO.File.GetAttributes(file);
-                    FileAttributes updated = attrs & ~(FileAttributes.ReadOnly | FileAttributes.Archive);
+                                              FileAttributes attrs = System.IO.File.GetAttributes(file);
+                                              FileAttributes updated = attrs & ~(FileAttributes.ReadOnly | FileAttributes.Archive);
 
-                    if (updated != attrs)
-                        System.IO.File.SetAttributes(file, updated);
-                }
-            }, (directory, cancellationToken), cancellationToken)
-                .NoSync();
+                                              if (updated != attrs)
+                                                  System.IO.File.SetAttributes(file, updated);
+                                          }
+                                      }, (directory, cancellationToken), cancellationToken)
+                                      .NoSync();
 
             return true;
         }
@@ -567,10 +569,7 @@ public sealed class FileUtil : IFileUtil
         }, (directory, ct), ct);
     }
 
-    public ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(
-        string directory,
-        bool log = true,
-        CancellationToken ct = default)
+    public ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true, CancellationToken ct = default)
     {
         if (log)
             _logger.LogDebug("Getting all FileInfos in {directory} recursively...", directory);
@@ -603,5 +602,40 @@ public sealed class FileUtil : IFileUtil
 
             return list;
         }, (directory, ct), ct);
+    }
+
+    public FileStream OpenRead(string path, bool log = true)
+    {
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(OpenRead), path);
+
+        return new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            BufferSize = _defaultBuffer,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+        });
+    }
+
+    public FileStream OpenWrite(string path, bool log = true)
+    {
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(OpenWrite), path);
+
+        string? dir = Path.GetDirectoryName(path);
+
+        if (dir.HasContent())
+            Directory.CreateDirectory(dir);
+
+        return new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.Create,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            BufferSize = _defaultBuffer,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+        });
     }
 }

@@ -259,4 +259,8 @@ public interface IFileUtil
 
     ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true,
         CancellationToken cancellationToken = default);
+
+    FileStream OpenRead(string path, bool log = true);
+
+    FileStream OpenWrite(string path, bool log = true);
 }
