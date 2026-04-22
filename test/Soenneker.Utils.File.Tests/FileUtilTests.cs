@@ -1,24 +1,23 @@
 using AwesomeAssertions;
-using Soenneker.Tests.FixturedUnit;
+using Soenneker.Tests.HostedUnit;
 using Soenneker.Utils.File.Abstract;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Xunit;
 using Soenneker.Utils.Path;
 using System.Threading;
 
 
 namespace Soenneker.Utils.File.Tests;
 
-[Collection("Collection")]
-public class FileUtilTests : FixturedUnitTest
+[ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
+public class FileUtilTests : HostedUnitTest
 {
     private readonly IFileUtil _fileUtil;
     private readonly PathUtil _pathUtil = new();
 
-    public FileUtilTests(Fixture fixture, ITestOutputHelper output) : base(fixture, output)
+    public FileUtilTests(Host host) : base(host)
     {
         _fileUtil = Resolve<IFileUtil>(true);
     }
@@ -33,7 +32,7 @@ public class FileUtilTests : FixturedUnitTest
         return path;
     }
 
-    [Fact]
+    [Test]
     public async ValueTask ReadFile_ShouldReturnFileContent()
     {
         string path = await Setup(CancellationToken);
@@ -45,7 +44,7 @@ public class FileUtilTests : FixturedUnitTest
         content.Should().Be(expectedContent);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask TryReadFile_WhenFileExists_ShouldReturnFileContent()
     {
         string path = await Setup(CancellationToken);
@@ -57,7 +56,7 @@ public class FileUtilTests : FixturedUnitTest
         content.Should().Be(expectedContent);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask TryReadFile_WhenFileDoesNotExist_ShouldReturnNull()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken);
@@ -67,7 +66,7 @@ public class FileUtilTests : FixturedUnitTest
         content.Should().BeNull();
     }
 
-    [Fact]
+    [Test]
     public async ValueTask WriteAllLines_ShouldWriteAllLinesToFile()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken);
@@ -80,7 +79,7 @@ public class FileUtilTests : FixturedUnitTest
         writtenLines.Should().BeEquivalentTo(lines);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask ReadFileToBytes_ShouldReturnFileContentAsBytes()
     {
         string path = await Setup(CancellationToken);
@@ -93,7 +92,7 @@ public class FileUtilTests : FixturedUnitTest
         contentBytes.Should().BeEquivalentTo(expectedBytes);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask ReadFileToMemoryStream_ShouldReturnFileContentAsMemoryStream()
     {
         string path = await Setup(CancellationToken);
@@ -108,7 +107,7 @@ public class FileUtilTests : FixturedUnitTest
         content.Should().Be(expectedContent);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask ReadFileAsLines_ShouldReturnFileContentAsList()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken);
@@ -123,7 +122,7 @@ public class FileUtilTests : FixturedUnitTest
         content.Should().BeEquivalentTo(expectedContent);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask WriteFile_ShouldWriteContentToFile()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken);
@@ -135,7 +134,7 @@ public class FileUtilTests : FixturedUnitTest
         writtenContent.Should().Be(content);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask WriteFile_WithStream_ShouldWriteStreamContentToFile()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken);
@@ -152,7 +151,7 @@ public class FileUtilTests : FixturedUnitTest
         writtenContent.Should().Be(content);
     }
 
-    [Fact]
+    [Test]
     public async ValueTask WriteFile_WithByteArray_ShouldWriteByteArrayToFile()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken);
