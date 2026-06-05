@@ -247,20 +247,72 @@ public interface IFileUtil
     /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
     ValueTask SetLastWriteTimeUtc(string path, DateTime dateTimeUtc, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reads to hash set.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    /// <param name="comparer">The comparer.</param>
+    /// <param name="trim">The trim.</param>
+    /// <param name="ignoreEmpty">The ignore empty.</param>
+    /// <param name="log">The log.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<HashSet<string>> ReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true, bool ignoreEmpty = true,
         bool log = true, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Attempts to execute read to hash set.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    /// <param name="comparer">The comparer.</param>
+    /// <param name="trim">The trim.</param>
+    /// <param name="ignoreEmpty">The ignore empty.</param>
+    /// <param name="log">The log.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
         bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates directory.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets all file names in directory recursively.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="log">The log.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<string[]> GetAllFileNamesInDirectoryRecursively(string directory, bool log = true, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets all file info in directory recursively safe.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="log">The log.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Executes the open read operation.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    /// <param name="log">The log.</param>
+    /// <returns>The result of the operation.</returns>
     FileStream OpenRead(string path, bool log = true);
 
+    /// <summary>
+    /// Executes the open write operation.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    /// <param name="log">The log.</param>
+    /// <returns>The result of the operation.</returns>
     FileStream OpenWrite(string path, bool log = true);
 }
