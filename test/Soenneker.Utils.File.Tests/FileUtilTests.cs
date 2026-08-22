@@ -163,5 +163,42 @@ public class FileUtilTests : HostedUnitTest
         string? writtenContent = await System.IO.File.ReadAllTextAsync(path, System.Threading.CancellationToken.None);
         writtenContent.Should().Be(content);
     }
+
+    [Test]
+    public async ValueTask Move_ShouldOverwriteDestinationAndDeleteSource()
+    {
+        string source = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
+        string destination = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
+        await System.IO.File.WriteAllTextAsync(source, "source", CancellationToken.None);
+        await System.IO.File.WriteAllTextAsync(destination, "destination", CancellationToken.None);
+
+        await _fileUtil.Move(source, destination, log: false, CancellationToken.None);
+
+        System.IO.File.Exists(source).Should().BeFalse();
+        (await System.IO.File.ReadAllTextAsync(destination, CancellationToken.None)).Should().Be("source");
+    }
+
+    [Test]
+    public async ValueTask GetAllFileNamesInDirectoryRecursively_ShouldReturnEveryFile()
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"file-util-tests-{System.Guid.NewGuid():N}");
+
+        try
+        {
+            string child = System.IO.Path.Combine(root, "child");
+            System.IO.Directory.CreateDirectory(child);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(root, "one.txt"), "one", CancellationToken.None);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(child, "two.txt"), "two", CancellationToken.None);
+
+            string[] files = await _fileUtil.GetAllFileNamesInDirectoryRecursively(root, log: false, CancellationToken.None);
+
+            files.Should().HaveCount(2);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(root))
+                System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
 }
 

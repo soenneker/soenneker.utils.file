@@ -6,6 +6,7 @@ using Soenneker.Extensions.ValueTask;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.MemoryStream.Abstract;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
@@ -19,7 +20,9 @@ namespace Soenneker.Utils.File;
 /// <inheritdoc cref="IFileUtil"/>
 public sealed class FileUtil : IFileUtil
 {
-    private const int _defaultBuffer = 128 * 1024; // 128kB
+    private const int _copyBufferSize = 128 * 1024;
+    private const int _textBufferSize = 16 * 1024;
+    private const int _maxInitialLineCapacity = 4 * 1024;
 
     // Predictable UTF-8 without BOM; also avoids repeatedly touching Encoding.UTF8 (minor).
     private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
@@ -62,15 +65,11 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(ReadAsLines), path);
 
-        // Avoid File.Exists + new FileInfo double-hit.
-        var fi = new FileInfo(path);
-        long len = fi.Exists ? fi.Length : 0L;
-
-        // Heuristic capacity to reduce list growth. Still just a heuristic.
-        int capacity = len > 0 ? (int)Math.Min(int.MaxValue, (len / 48) + 16) : 0;
-        List<string> lines = capacity > 0 ? new List<string>(capacity) : new List<string>();
-
-        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _defaultBuffer);
+        // Keep the text buffers below the LOH threshold. The previous 128 KB buffer
+        // caused both the byte and char buffers to be allocated on the LOH.
+        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _textBufferSize);
+        int capacity = GetInitialLineCapacity(reader.BaseStream.Length, 48);
+        var lines = new List<string>(capacity);
 
         while (await reader.ReadLineAsync(ct) is { } line)
             lines.Add(line);
@@ -91,8 +90,6 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
 
-        var fi = new FileInfo(path);
-
         System.IO.MemoryStream ms = await _memoryStreamUtil.Get(cancellationToken)
                                                            .NoSync();
 
@@ -100,23 +97,25 @@ public sealed class FileUtil : IFileUtil
         ms.Position = 0;
         ms.SetLength(0);
 
-        if (fi.Exists && fi.Length is > 0 and <= int.MaxValue)
-        {
-            int needed = (int)fi.Length;
-            if (needed > ms.Capacity)
-                ms.Capacity = needed;
-        }
-
         await using var fs = new FileStream(path, new FileStreamOptions
         {
             Mode = FileMode.Open,
             Access = FileAccess.Read,
             Share = FileShare.Read,
-            BufferSize = _defaultBuffer,
+            // CopyToAsync supplies its own pooled buffer, so a second FileStream
+            // buffer only adds memory and an extra copy.
+            BufferSize = 1,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         });
 
-        await fs.CopyToAsync(ms, _defaultBuffer, cancellationToken)
+        if (fs.Length is > 0 and <= int.MaxValue)
+        {
+            var needed = (int)fs.Length;
+            if (needed > ms.Capacity)
+                ms.Capacity = needed;
+        }
+
+        await fs.CopyToAsync(ms, _copyBufferSize, cancellationToken)
                 .NoSync();
 
         ms.ToStart();
@@ -141,7 +140,7 @@ public sealed class FileUtil : IFileUtil
             Mode = FileMode.Create,
             Access = FileAccess.Write,
             Share = FileShare.None,
-            BufferSize = _defaultBuffer,
+            BufferSize = 1,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         };
 
@@ -153,7 +152,7 @@ public sealed class FileUtil : IFileUtil
         }
 
         await using var dest = new FileStream(path, fso);
-        await source.CopyToAsync(dest, _defaultBuffer, ct)
+        await source.CopyToAsync(dest, _copyBufferSize, ct)
                     .NoSync();
     }
 
@@ -199,14 +198,12 @@ public sealed class FileUtil : IFileUtil
         if (dir.HasContent())
             Directory.CreateDirectory(dir);
 
-        var srcInfo = new FileInfo(srcPath);
-
         await using var src = new FileStream(srcPath, new FileStreamOptions
         {
             Mode = FileMode.Open,
             Access = FileAccess.Read,
             Share = FileShare.Read,
-            BufferSize = _defaultBuffer,
+            BufferSize = 1,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         });
 
@@ -215,12 +212,12 @@ public sealed class FileUtil : IFileUtil
             Mode = FileMode.Create,
             Access = FileAccess.Write,
             Share = FileShare.None,
-            BufferSize = _defaultBuffer,
+            BufferSize = 1,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            PreallocationSize = srcInfo.Exists ? Math.Min(srcInfo.Length, int.MaxValue) : 0
+            PreallocationSize = src.Length
         });
 
-        await src.CopyToAsync(dst, _defaultBuffer, ct)
+        await src.CopyToAsync(dst, _copyBufferSize, ct)
                  .NoSync();
     }
 
@@ -229,10 +226,30 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} start from {source} to {dest} ...", nameof(Move), sourcePath, destinationPath);
 
-        await Copy(sourcePath, destinationPath, log, cancellationToken)
-            .NoSync();
-        await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)
-            .NoSync();
+        string? parent = Path.GetDirectoryName(destinationPath);
+        if (parent.HasContent())
+            Directory.CreateDirectory(parent);
+
+        try
+        {
+            // Same-volume moves are metadata-only and avoid opening, buffering,
+            // copying, and deleting the file. Overwrite matches the old copy path.
+            await ExecutionContextUtil.RunInlineOrOffload(static s =>
+                                      {
+                                          (string source, string destination) = ((string Source, string Destination))s;
+                                          System.IO.File.Move(source, destination, overwrite: true);
+                                      }, (sourcePath, destinationPath), cancellationToken)
+                                      .NoSync();
+        }
+        catch (IOException) when (System.IO.File.Exists(sourcePath))
+        {
+            // Some filesystems cannot perform the native move. Retain the previous
+            // cross-volume behavior as a cancellable copy followed by a delete.
+            await Copy(sourcePath, destinationPath, log: false, cancellationToken)
+                .NoSync();
+            await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)
+                .NoSync();
+        }
     }
 
     public ValueTask Delete(string path, bool ignoreMissing = true, bool log = true, CancellationToken ct = default)
@@ -243,21 +260,25 @@ public sealed class FileUtil : IFileUtil
         // No closure: state passed in.
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            (string p, bool ignore) = ((string Path, bool Ignore))s!;
-            if (!System.IO.File.Exists(p))
-            {
-                if (!ignore)
-                    throw new FileNotFoundException("File not found", p);
+            (string p, bool ignore) = ((string Path, bool Ignore))s;
 
+            // File.Delete is already a no-op for a missing file. Avoid a separate
+            // metadata lookup for the overwhelmingly common ignore-missing path.
+            if (ignore)
+            {
+                System.IO.File.Delete(p);
                 return;
             }
+
+            if (!System.IO.File.Exists(p))
+                throw new FileNotFoundException("File not found", p);
 
             System.IO.File.Delete(p);
         }, (path, ignoreMissing), ct);
     }
 
     public ValueTask<bool> Exists(string path, CancellationToken ct = default) =>
-        ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.File.Exists((string)s!), path, ct);
+        ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.File.Exists(s), path, ct);
 
     public async ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken ct = default)
     {
@@ -273,7 +294,7 @@ public sealed class FileUtil : IFileUtil
 
         IEnumerable<string> files = Directory.EnumerateFiles(sourceDir, "*", opts);
 
-        int dop = Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
+        int dop = GetCopyDegreeOfParallelism(sourceDir, destinationDir);
 
         await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = dop, CancellationToken = ct }, async (file, token) =>
                       {
@@ -293,29 +314,30 @@ public sealed class FileUtil : IFileUtil
     public ValueTask<long?> GetSize(string path, CancellationToken ct = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var fi = new FileInfo((string)s!);
+            var fi = new FileInfo(s);
             return fi.Exists ? fi.Length : (long?)null;
         }, path, ct);
 
     public ValueTask<DateTimeOffset?> GetLastModified(string path, CancellationToken ct = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var fi = new FileInfo((string)s!);
+            var fi = new FileInfo(s);
             return fi.Exists ? fi.LastWriteTimeUtc : (DateTimeOffset?)null;
         }, path, ct);
 
-    public async ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
+    public ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (!await Exists(path, cancellationToken)
-                .NoSync())
-            return false;
-
         if (log)
             _logger.LogDebug("{name} start for {path} …", nameof(DeleteIfExists), path);
 
-        await Delete(path, ignoreMissing: false, log: false, cancellationToken)
-            .NoSync();
-        return true;
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            if (!System.IO.File.Exists(s))
+                return false;
+
+            System.IO.File.Delete(s);
+            return true;
+        }, path, cancellationToken);
     }
 
     public async ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
@@ -335,7 +357,7 @@ public sealed class FileUtil : IFileUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s;
 
             foreach (string file in Directory.EnumerateFiles(dir))
             {
@@ -374,7 +396,7 @@ public sealed class FileUtil : IFileUtil
         {
             await ExecutionContextUtil.RunInlineOrOffload(static s =>
                                       {
-                                          (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+                                          (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s;
 
                                           var opts = new EnumerationOptions
                                           {
@@ -417,7 +439,7 @@ public sealed class FileUtil : IFileUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, oldVal, newVal, token) = ((string Directory, string OldValue, string NewValue, CancellationToken Token))s!;
+            (string dir, string oldVal, string newVal, CancellationToken token) = ((string Directory, string OldValue, string NewValue, CancellationToken Token))s;
 
             var opts = new EnumerationOptions
             {
@@ -464,7 +486,7 @@ public sealed class FileUtil : IFileUtil
     public ValueTask SetLastWriteTimeUtc(string path, DateTime dateTimeUtc, CancellationToken ct = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (p, dt) = ((string Path, DateTime Dt))s!;
+            (string p, DateTime dt) = ((string Path, DateTime Dt))s;
             System.IO.File.SetLastWriteTimeUtc(p, dt);
         }, (path, dateTimeUtc), ct);
 
@@ -494,16 +516,10 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(ReadToHashSet), path);
 
-        var fi = new FileInfo(path);
-        long len = fi.Exists ? fi.Length : 0L;
-
-        int capacity = len > 0 ? (int)Math.Min(int.MaxValue, (len / 32) + 16) : 0;
-
         comparer ??= StringComparer.Ordinal;
-
-        HashSet<string> set = capacity > 0 ? new HashSet<string>(capacity, comparer) : new HashSet<string>(comparer);
-
-        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _defaultBuffer);
+        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _textBufferSize);
+        int capacity = GetInitialLineCapacity(reader.BaseStream.Length, 32);
+        var set = new HashSet<string>(capacity, comparer);
 
         while (await reader.ReadLineAsync(cancellationToken)
                            .NoSync() is { } line)
@@ -521,7 +537,7 @@ public sealed class FileUtil : IFileUtil
     }
 
     public ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken ct = default) =>
-        ExecutionContextUtil.RunInlineOrOffload(static s => Directory.CreateDirectory((string)s!), path, ct);
+        ExecutionContextUtil.RunInlineOrOffload(static s => Directory.CreateDirectory(s), path, ct);
 
     public async ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
         bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default)
@@ -548,7 +564,7 @@ public sealed class FileUtil : IFileUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, token) = ((string Directory, CancellationToken Token))s!;
+            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s;
 
             var opts = new EnumerationOptions
             {
@@ -557,15 +573,37 @@ public sealed class FileUtil : IFileUtil
                 AttributesToSkip = FileAttributes.ReparsePoint
             };
 
-            var list = new List<string>();
+            string[] buffer = ArrayPool<string>.Shared.Rent(256);
+            var count = 0;
 
-            foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+            try
             {
-                token.ThrowIfCancellationRequested();
-                list.Add(file);
-            }
+                foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                {
+                    token.ThrowIfCancellationRequested();
 
-            return list.ToArray();
+                    if (count == buffer.Length)
+                    {
+                        string[] larger = ArrayPool<string>.Shared.Rent(checked(buffer.Length * 2));
+                        Array.Copy(buffer, larger, count);
+                        ArrayPool<string>.Shared.Return(buffer, clearArray: true);
+                        buffer = larger;
+                    }
+
+                    buffer[count++] = file;
+                }
+
+                if (count == 0)
+                    return Array.Empty<string>();
+
+                var result = new string[count];
+                Array.Copy(buffer, result, count);
+                return result;
+            }
+            finally
+            {
+                ArrayPool<string>.Shared.Return(buffer, clearArray: true);
+            }
         }, (directory, ct), ct);
     }
 
@@ -576,7 +614,7 @@ public sealed class FileUtil : IFileUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, token) = ((string Directory, CancellationToken Token))s!;
+            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s;
 
             var list = new List<FileInfo>();
 
@@ -614,7 +652,7 @@ public sealed class FileUtil : IFileUtil
             Mode = FileMode.Open,
             Access = FileAccess.Read,
             Share = FileShare.Read,
-            BufferSize = _defaultBuffer,
+            BufferSize = _copyBufferSize,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         });
     }
@@ -634,8 +672,39 @@ public sealed class FileUtil : IFileUtil
             Mode = FileMode.Create,
             Access = FileAccess.Write,
             Share = FileShare.None,
-            BufferSize = _defaultBuffer,
+            BufferSize = _copyBufferSize,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         });
+    }
+
+    private static int GetInitialLineCapacity(long byteLength, int estimatedBytesPerLine)
+    {
+        if (byteLength <= 0)
+            return 0;
+
+        // A bounded hint avoids repeated growth for normal text files without
+        // reserving hundreds of MB for a large file containing very few lines.
+        return (int)Math.Min(_maxInitialLineCapacity, (byteLength / estimatedBytesPerLine) + 1);
+    }
+
+    private static int GetCopyDegreeOfParallelism(string sourceDirectory, string destinationDirectory)
+    {
+        try
+        {
+            DriveType sourceType = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(sourceDirectory))!).DriveType;
+            DriveType destinationType = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(destinationDirectory))!).DriveType;
+
+            if (sourceType is DriveType.Removable or DriveType.CDRom || destinationType is DriveType.Removable or DriveType.CDRom)
+                return 1;
+
+            if (sourceType == DriveType.Network || destinationType == DriveType.Network)
+                return 2;
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            // Unknown and virtual filesystems use the conservative default below.
+        }
+
+        return Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
     }
 }
