@@ -13,6 +13,7 @@ public static class FileUtilRegistrar
     /// <summary>
     /// Adds <see cref="IFileUtil"/> as a scoped service. <para/>
     /// </summary>
+    /// <returns>Adds <see cref="IFileUtil"/> as a scoped service. <para/>.</returns>
     public static IServiceCollection AddFileUtilAsScoped(this IServiceCollection services)
     {
         services.AddMemoryStreamUtilAsSingleton().TryAddScoped<IFileUtil, FileUtil>();
@@ -23,6 +24,7 @@ public static class FileUtilRegistrar
     /// <summary>
     /// Adds <see cref="IFileUtil"/> as a singleton service. <para/>
     /// </summary>
+    /// <returns>Adds <see cref="IFileUtil"/> as a singleton service. <para/>.</returns>
     public static IServiceCollection AddFileUtilAsSingleton(this IServiceCollection services)
     {
         services.AddMemoryStreamUtilAsSingleton().TryAddSingleton<IFileUtil, FileUtil>();

@@ -200,23 +200,27 @@ public interface IFileUtil
     /// Attempts to delete <paramref name="path"/> (regardless of existence).  
     /// Returns <c>true</c> on success; <c>false</c> when an exception occurs.
     /// </summary>
+    /// <returns>Attempts to delete <paramref name="path"/> (regardless of existence). Returns <c>true</c> on success; <c>false</c> when an exception occurs.</returns>
     ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempts to delete <paramref name="path"/> when it exists.
     /// Swallows any exception and returns whether the delete succeeded.
     /// </summary>
+    /// <returns>Attempts to delete <paramref name="path"/> when it exists. Swallows any exception and returns whether the delete succeeded.</returns>
     ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes all files in <paramref name="directory"/>.
     /// </summary>
+    /// <returns>Deletes all files in <paramref name="directory"/>.</returns>
     ValueTask DeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempts to delete all files in <paramref name="directory"/>.
     /// Returns <c>false</c> if an exception occurs.
     /// </summary>
+    /// <returns>Attempts to delete all files in <paramref name="directory"/>. Returns <c>false</c> if an exception occurs.</returns>
     ValueTask<bool> TryDeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -224,12 +228,14 @@ public interface IFileUtil
     /// <see cref="FileAttributes.Archive"/> flags from all files under <paramref name="directory"/>.
     /// Returns <c>false</c> if an exception occurs.
     /// </summary>
+    /// <returns>Attempts to remove the <see cref="FileAttributes.ReadOnly"/> and <see cref="FileAttributes.Archive"/> flags from all files under <paramref name="directory"/>. Returns <c>false</c> if an exception occurs.</returns>
     ValueTask<bool> TryRemoveReadonlyAndArchiveAttributesFromAll(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Renames all files and directories under <paramref name="directory"/> by replacing
     /// <paramref name="oldValue"/> with <paramref name="newValue"/> in their names.
     /// </summary>
+    /// <returns>Renames all files and directories under <paramref name="directory"/> by replacing <paramref name="oldValue"/> with <paramref name="newValue"/> in their names.</returns>
     ValueTask RenameAllInDirectoryRecursively(string directory, string oldValue, string newValue, bool log = true,
         CancellationToken cancellationToken = default);
 
@@ -237,6 +243,7 @@ public interface IFileUtil
     /// Deletes <paramref name="path"/> if it exists.
     /// Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.
     /// </summary>
+    /// <returns>Deletes <paramref name="path"/> if it exists. Returns <c>true</c> when a file was found and removed; otherwise <c>false</c>.</returns>
     ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -245,74 +252,75 @@ public interface IFileUtil
     /// <param name="path">The file to set the timestamp for.</param>
     /// <param name="dateTimeUtc">The UTC date and time.</param>
     /// <param name="cancellationToken">Token that can be used to cancel the operation.</param>
+    /// <returns>Sets the UTC date and time that the specified file was last written to.</returns>
     ValueTask SetLastWriteTimeUtc(string path, DateTime dateTimeUtc, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Reads to hash set.
+    /// Reads a text file into a set, optionally trimming lines and removing empty entries.
     /// </summary>
-    /// <param name="path">The path.</param>
-    /// <param name="comparer">The comparer.</param>
-    /// <param name="trim">The trim.</param>
-    /// <param name="ignoreEmpty">The ignore empty.</param>
-    /// <param name="log">The log.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    /// <param name="path">The file-system path.</param>
+    /// <param name="comparer">The comparer used for set membership.</param>
+    /// <param name="trim">True to trim each line.</param>
+    /// <param name="ignoreEmpty">True to exclude empty lines.</param>
+    /// <param name="log">True to emit operational logging.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>The set of processed lines.</returns>
     ValueTask<HashSet<string>> ReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true, bool ignoreEmpty = true,
         bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Attempts to execute read to hash set.
+    /// Attempts to read a text file into a set and returns null when the file cannot be read.
     /// </summary>
-    /// <param name="path">The path.</param>
-    /// <param name="comparer">The comparer.</param>
-    /// <param name="trim">The trim.</param>
-    /// <param name="ignoreEmpty">The ignore empty.</param>
-    /// <param name="log">The log.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    /// <param name="path">The file-system path.</param>
+    /// <param name="comparer">The comparer used for set membership.</param>
+    /// <param name="trim">True to trim each line.</param>
+    /// <param name="ignoreEmpty">True to exclude empty lines.</param>
+    /// <param name="log">True to emit operational logging.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>The processed set, or null when reading fails.</returns>
     ValueTask<HashSet<string>?> TryReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true,
         bool ignoreEmpty = true, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates directory.
+    /// Creates the directory and returns its resulting directory information.
     /// </summary>
-    /// <param name="path">The path.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    /// <param name="path">The file-system path.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>Information for the created or existing directory.</returns>
     ValueTask<DirectoryInfo> CreateDirectory(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all file names in directory recursively.
+    /// Enumerates full file names beneath a directory, including all descendants.
     /// </summary>
-    /// <param name="directory">The directory.</param>
-    /// <param name="log">The log.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    /// <param name="directory">The destination or root directory.</param>
+    /// <param name="log">True to emit operational logging.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>Full paths of discovered files.</returns>
     ValueTask<string[]> GetAllFileNamesInDirectoryRecursively(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all file info in directory recursively safe.
+    /// Recursively collects file information while logging and skipping directories that cannot be inspected.
     /// </summary>
-    /// <param name="directory">The directory.</param>
-    /// <param name="log">The log.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    /// <param name="directory">The destination or root directory.</param>
+    /// <param name="log">True to emit operational logging.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>Information for files in readable directories.</returns>
     ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Executes the open read operation.
+    /// Opens an existing file for read access using the utility's sharing and buffering defaults.
     /// </summary>
-    /// <param name="path">The path.</param>
-    /// <param name="log">The log.</param>
-    /// <returns>The result of the operation.</returns>
+    /// <param name="path">The file-system path.</param>
+    /// <param name="log">True to emit operational logging.</param>
+    /// <returns>A readable stream owned by the caller.</returns>
     FileStream OpenRead(string path, bool log = true);
 
     /// <summary>
-    /// Executes the open write operation.
+    /// Opens a file for write access using the utility's sharing and buffering defaults.
     /// </summary>
-    /// <param name="path">The path.</param>
-    /// <param name="log">The log.</param>
-    /// <returns>The result of the operation.</returns>
+    /// <param name="path">The file-system path.</param>
+    /// <param name="log">True to emit operational logging.</param>
+    /// <returns>A writable stream owned by the caller.</returns>
     FileStream OpenWrite(string path, bool log = true);
 }
