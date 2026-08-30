@@ -51,6 +51,10 @@ public sealed class FileUtil : IFileUtil
             return await Read(path, log, cancellationToken)
                 .NoSync();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception e)
         {
             if (log)
@@ -243,12 +247,26 @@ public sealed class FileUtil : IFileUtil
         }
         catch (IOException) when (System.IO.File.Exists(sourcePath))
         {
-            // Some filesystems cannot perform the native move. Retain the previous
-            // cross-volume behavior as a cancellable copy followed by a delete.
-            await Copy(sourcePath, destinationPath, log: false, cancellationToken)
-                .NoSync();
-            await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)
-                .NoSync();
+            // Some filesystems cannot perform a native cross-volume move. Copy to
+            // the destination directory first so a failed copy cannot truncate an
+            // existing destination file.
+            string temporaryPath = destinationPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+
+            try
+            {
+                await Copy(sourcePath, temporaryPath, log: false, cancellationToken)
+                    .NoSync();
+
+                cancellationToken.ThrowIfCancellationRequested();
+                System.IO.File.Move(temporaryPath, destinationPath, overwrite: true);
+
+                await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)
+                    .NoSync();
+            }
+            finally
+            {
+                System.IO.File.Delete(temporaryPath);
+            }
         }
     }
 
@@ -378,6 +396,10 @@ public sealed class FileUtil : IFileUtil
                 .NoSync();
             return true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             if (log)
@@ -419,6 +441,10 @@ public sealed class FileUtil : IFileUtil
                                       .NoSync();
 
             return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -501,6 +527,10 @@ public sealed class FileUtil : IFileUtil
                 .NoSync();
             return true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             if (log)
@@ -546,6 +576,10 @@ public sealed class FileUtil : IFileUtil
         {
             return await ReadToHashSet(path, comparer, trim, ignoreEmpty, log, cancellationToken)
                 .NoSync();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

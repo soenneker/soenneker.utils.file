@@ -97,7 +97,7 @@ public interface IFileUtil
     Task Write(string path, byte[] byteArray, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Moves a file from one path to another. Deletes the source file after copying.
+    /// Moves a file from one path to another, using a native move when possible and a copy-and-delete fallback across filesystems.
     /// </summary>
     /// <param name="sourcePath">The path of the source file.</param>
     /// <param name="destinationPath">The path of the destination file.</param>
@@ -117,7 +117,7 @@ public interface IFileUtil
     ValueTask Copy(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Recursively copies all directories and files from the specified source directory to the destination directory.
+    /// Recursively copies files from the specified source directory to the destination directory.
     /// </summary>
     /// <param name="sourceDir">The path to the source directory to copy from.</param>
     /// <param name="destinationDir">The path to the destination directory to copy to.</param>
@@ -125,8 +125,7 @@ public interface IFileUtil
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous copy operation.</returns>
     /// <remarks>
-    /// This method first creates the entire directory structure of the source directory in the destination,
-    /// and then copies all files into the corresponding locations.
+    /// Parent directories required by copied files are created. Empty directories and reparse-point entries are not copied.
     /// </remarks>
     /// <example>
     /// <code>
@@ -205,7 +204,7 @@ public interface IFileUtil
 
     /// <summary>
     /// Attempts to delete <paramref name="path"/> when it exists.
-    /// Swallows any exception and returns whether the delete succeeded.
+    /// Converts deletion failures to <see langword="false"/>; requested cancellation is propagated.
     /// </summary>
     /// <returns>Attempts to delete <paramref name="path"/> when it exists. Swallows any exception and returns whether the delete succeeded.</returns>
     ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default);
@@ -218,7 +217,7 @@ public interface IFileUtil
 
     /// <summary>
     /// Attempts to delete all files in <paramref name="directory"/>.
-    /// Returns <c>false</c> if an exception occurs.
+    /// Returns <c>false</c> if deletion fails; requested cancellation is propagated.
     /// </summary>
     /// <returns>Attempts to delete all files in <paramref name="directory"/>. Returns <c>false</c> if an exception occurs.</returns>
     ValueTask<bool> TryDeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default);
@@ -226,7 +225,7 @@ public interface IFileUtil
     /// <summary>
     /// Attempts to remove the <see cref="FileAttributes.ReadOnly"/> and
     /// <see cref="FileAttributes.Archive"/> flags from all files under <paramref name="directory"/>.
-    /// Returns <c>false</c> if an exception occurs.
+    /// Returns <c>false</c> if attribute removal fails; requested cancellation is propagated.
     /// </summary>
     /// <returns>Attempts to remove the <see cref="FileAttributes.ReadOnly"/> and <see cref="FileAttributes.Archive"/> flags from all files under <paramref name="directory"/>. Returns <c>false</c> if an exception occurs.</returns>
     ValueTask<bool> TryRemoveReadonlyAndArchiveAttributesFromAll(string directory, bool log = true, CancellationToken cancellationToken = default);

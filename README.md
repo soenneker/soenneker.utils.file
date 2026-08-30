@@ -3,8 +3,9 @@
 [![](https://img.shields.io/nuget/dt/Soenneker.Utils.File.svg?style=for-the-badge)](https://www.nuget.org/packages/Soenneker.Utils.File/)
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.utils.file/codeql.yml?label=CodeQL&style=for-the-badge)](https://github.com/soenneker/soenneker.utils.file/actions/workflows/codeql.yml)
 
-# ![](https://user-images.githubusercontent.com/4441470/224455560-91ed3ee7-f510-4041-a8d2-3fc093025112.png) Soenneker.Utils.File
-A utility library encapsulating asynchronous file IO operations.
+# Soenneker.Utils.File
+
+DI-friendly asynchronous file reading, writing, copying, moving, enumeration, metadata, and cleanup operations.
 
 ## Installation
 
@@ -12,29 +13,61 @@ A utility library encapsulating asynchronous file IO operations.
 dotnet add package Soenneker.Utils.File
 ```
 
-## Quick start
+## Registration
 
 ```csharp
-using Soenneker.Utils.File.Registrars;
-
-services.AddFileUtilAsSingleton();
+builder.Services.AddFileUtilAsSingleton();
 ```
 
-Then inject `IFileUtil` wherever you need it.
+`AddFileUtilAsScoped()` is also available and registers the memory-stream dependency with the matching lifetime.
 
-## Common operations
+## Read and write
 
-- `Read()` - Reads the entire content of a file as a string. Returns a task containing the file content as a string.
-- `TryRead()` - Tries to read the content of a file as a string. Logs a warning on failure. Returns a task containing the file content as a string or null on failure.
-- `ReadAsLines()` - Reads the entire content of a file as a list of strings, where each line is an item in the list. Returns a task containing a list of strings representing the file's lines.
-- `ReadToBytes()` - Reads the entire content of a file as a byte array. Returns a task containing the file content as a byte array.
-- `ReadToMemoryStream()` - Reads the entire content of a file into a memory stream. Returns a task containing a memory stream with the file content.
-- `Write()` - Writes a string to a file. Returns a task representing the operation.
-- `WriteAllLines()` - Writes all lines of text to a file. Returns a task representing the operation.
-- `Append()` - Appends text to the end of an existing file, creating the file if it does not exist. Returns a `ValueTask` that completes when the write finishes.
-- `Copy()` - Copies a file from one path to another. Returns a task representing the operation.
-- `Move()` - Moves a file from one path to another. Deletes the source file after copying. Returns a task representing the operation.
-- `Delete()` - Deletes the specified file if it exists. Returns a `ValueTask` that completes when the deletion (if any) finishes.
-- `Exists()` - Checks whether a file exists at the given path.
+```csharp
+string text = await files.Read(path, cancellationToken: cancellationToken);
+List<string> lines = await files.ReadAsLines(path, cancellationToken: cancellationToken);
+byte[] bytes = await files.ReadToBytes(path, cancellationToken: cancellationToken);
 
-The package also includes 18 additional operations for more specialized cases.
+await files.Write(path, text, cancellationToken: cancellationToken);
+await files.Append(path, "next entry\n", cancellationToken: cancellationToken);
+```
+
+Text writes use UTF-8 without a byte-order mark. Reads detect a byte-order mark when present. Whole-file methods materialize the complete contents; use `OpenRead()` for large or streaming workloads.
+
+`TryRead()` and `TryReadToHashSet()` return `null` and optionally log when reading fails. Requested cancellation still throws `OperationCanceledException` rather than being converted to `null`.
+
+## Stream ownership
+
+```csharp
+await using FileStream input = files.OpenRead(path);
+await using FileStream output = files.OpenWrite(destinationPath);
+
+using MemoryStream buffered = await files.ReadToMemoryStream(path, cancellationToken: cancellationToken);
+```
+
+The caller owns every stream returned by this package. `OpenWrite()` creates missing parent directories and truncates an existing file. `Write(path, sourceStream)` copies from the source's current position, leaves the source open, and replaces the destination contents.
+
+## Copy and move
+
+```csharp
+await files.Copy(sourcePath, destinationPath, cancellationToken: cancellationToken);
+await files.Move(sourcePath, archivePath, cancellationToken: cancellationToken);
+await files.CopyRecursively(sourceDirectory, destinationDirectory, cancellationToken: cancellationToken);
+```
+
+`Copy()` creates the destination parent and overwrites the destination. It is not transactional: a failed or cancelled copy can leave a partial destination.
+
+`Move()` uses the filesystem's native overwrite move when available. Its cross-volume fallback copies to a temporary file beside the destination, publishes that completed copy, then deletes the source. If cancellation occurs after publication but before source deletion, both complete files can remain.
+
+Recursive copy skips inaccessible entries and does not follow symbolic links, junctions, or other reparse points. It copies discovered files and their required parent directories; empty source directories are not reproduced.
+
+## Deletion and bulk mutation
+
+```csharp
+bool removed = await files.DeleteIfExists(path, cancellationToken: cancellationToken);
+await files.DeleteAll(directory, cancellationToken: cancellationToken);
+```
+
+`DeleteAll()` removes only files immediately inside the directory, not descendants. `TryDelete()`, `TryDeleteIfExists()`, and `TryDeleteAll()` convert I/O failures to `false`, but propagate requested cancellation.
+
+Bulk rename, attribute removal, recursive copy, and multi-file deletion are incremental operations. Cancellation or a later conflict does not undo earlier filesystem changes. Resolve and validate any user-controlled root path before calling destructive methods.
