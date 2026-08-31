@@ -181,18 +181,23 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(WriteAtomically), fullPath);
 
-        Directory.CreateDirectory(directory);
-
         try
         {
-            await using (var stream = new FileStream(temporaryPath, new FileStreamOptions
-                         {
-                             Mode = FileMode.CreateNew,
-                             Access = FileAccess.Write,
-                             Share = FileShare.None,
-                             BufferSize = _textBufferSize,
-                             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-                         }))
+            FileStream stream = await ExecutionContextUtil.RunInlineOrOffload(static state =>
+            {
+                Directory.CreateDirectory(state.Directory);
+
+                return new FileStream(state.TemporaryPath, new FileStreamOptions
+                {
+                    Mode = FileMode.CreateNew,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    BufferSize = _textBufferSize,
+                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+                });
+            }, (Directory: directory, TemporaryPath: temporaryPath), cancellationToken).NoSync();
+
+            await using (stream)
             {
                 await writer(stream, cancellationToken).NoSync();
                 await stream.FlushAsync(cancellationToken).NoSync();
@@ -213,7 +218,7 @@ public sealed class FileUtil : IFileUtil
 
         return WriteAtomically(path, async (stream, ct) =>
         {
-            using var writer = new StreamWriter(stream, _utf8NoBom, _textBufferSize, leaveOpen: true);
+            await using var writer = new StreamWriter(stream, _utf8NoBom, _textBufferSize, leaveOpen: true);
             await writer.WriteAsync(content.AsMemory(), ct).NoSync();
             await writer.FlushAsync(ct).NoSync();
         }, log, cancellationToken);
