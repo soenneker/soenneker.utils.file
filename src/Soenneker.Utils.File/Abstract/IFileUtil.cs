@@ -97,6 +97,38 @@ public interface IFileUtil
     Task Write(string path, byte[] byteArray, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Writes content to a temporary sibling file and atomically replaces the destination after the write completes successfully.
+    /// </summary>
+    /// <param name="path">The destination file path.</param>
+    /// <param name="writer">A callback that writes the complete file content to the supplied temporary stream. The stream is owned by the utility.</param>
+    /// <param name="log">Indicates whether to log the operation.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    /// <remarks>The existing destination is left unchanged when the callback fails or cancellation is requested before replacement.</remarks>
+    ValueTask WriteAtomically(string path, Func<Stream, CancellationToken, ValueTask> writer, bool log = true,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes text to a temporary sibling file and atomically replaces the destination after the write completes successfully.
+    /// </summary>
+    /// <param name="path">The destination file path.</param>
+    /// <param name="content">The text to write using UTF-8 without a byte-order mark.</param>
+    /// <param name="log">Indicates whether to log the operation.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    ValueTask WriteAtomically(string path, string content, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes bytes to a temporary sibling file and atomically replaces the destination after the write completes successfully.
+    /// </summary>
+    /// <param name="path">The destination file path.</param>
+    /// <param name="bytes">The bytes to write.</param>
+    /// <param name="log">Indicates whether to log the operation.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    ValueTask WriteAtomically(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Moves a file from one path to another, using a native move when possible and a copy-and-delete fallback across filesystems.
     /// </summary>
     /// <param name="sourcePath">The path of the source file.</param>

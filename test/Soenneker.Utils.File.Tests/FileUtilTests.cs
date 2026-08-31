@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Soenneker.Tests.HostedUnit;
 using Soenneker.Utils.File.Abstract;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -162,6 +163,38 @@ public class FileUtilTests : HostedUnitTest
 
         string? writtenContent = await System.IO.File.ReadAllTextAsync(path, System.Threading.CancellationToken.None);
         writtenContent.Should().Be(content);
+    }
+
+    [Test]
+    public async ValueTask WriteAtomically_ShouldReplaceDestination()
+    {
+        string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
+        await System.IO.File.WriteAllTextAsync(path, "old", CancellationToken.None);
+
+        await _fileUtil.WriteAtomically(path, "new", log: false, CancellationToken.None);
+
+        (await System.IO.File.ReadAllTextAsync(path, CancellationToken.None)).Should().Be("new");
+    }
+
+    [Test]
+    public async ValueTask WriteAtomically_WhenWriterFails_ShouldPreserveDestination()
+    {
+        string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
+        await System.IO.File.WriteAllTextAsync(path, "old", CancellationToken.None);
+        var failed = false;
+
+        try
+        {
+            await _fileUtil.WriteAtomically(path, (_, _) => throw new InvalidOperationException("Expected failure"), log: false,
+                CancellationToken.None);
+        }
+        catch (InvalidOperationException)
+        {
+            failed = true;
+        }
+
+        failed.Should().BeTrue();
+        (await System.IO.File.ReadAllTextAsync(path, CancellationToken.None)).Should().Be("old");
     }
 
     [Test]

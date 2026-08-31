@@ -168,6 +168,63 @@ public sealed class FileUtil : IFileUtil
         return System.IO.File.WriteAllBytesAsync(path, bytes, cancellationToken);
     }
 
+    public async ValueTask WriteAtomically(string path, Func<Stream, CancellationToken, ValueTask> writer, bool log = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        string fullPath = Path.GetFullPath(path);
+        string directory = Path.GetDirectoryName(fullPath)!;
+        string temporaryPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+
+        if (log)
+            _logger.LogDebug("{name} for {path}", nameof(WriteAtomically), fullPath);
+
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            await using (var stream = new FileStream(temporaryPath, new FileStreamOptions
+                         {
+                             Mode = FileMode.CreateNew,
+                             Access = FileAccess.Write,
+                             Share = FileShare.None,
+                             BufferSize = _textBufferSize,
+                             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+                         }))
+            {
+                await writer(stream, cancellationToken).NoSync();
+                await stream.FlushAsync(cancellationToken).NoSync();
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await Move(temporaryPath, fullPath, log: false, cancellationToken).NoSync();
+        }
+        finally
+        {
+            await TryDelete(temporaryPath, log: false, CancellationToken.None).NoSync();
+        }
+    }
+
+    public ValueTask WriteAtomically(string path, string content, bool log = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        return WriteAtomically(path, async (stream, ct) =>
+        {
+            using var writer = new StreamWriter(stream, _utf8NoBom, _textBufferSize, leaveOpen: true);
+            await writer.WriteAsync(content.AsMemory(), ct).NoSync();
+            await writer.FlushAsync(ct).NoSync();
+        }, log, cancellationToken);
+    }
+
+    public ValueTask WriteAtomically(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        return WriteAtomically(path, (stream, ct) => stream.WriteAsync(bytes, ct), log, cancellationToken);
+    }
+
     public Task WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
