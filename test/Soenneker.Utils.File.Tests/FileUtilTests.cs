@@ -153,6 +153,29 @@ public class FileUtilTests : HostedUnitTest
     }
 
     [Test]
+    public async ValueTask WriteFile_WithStream_ShouldOffloadSynchronousSetupFromSynchronizationContext()
+    {
+        string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
+        await using var stream = new SynchronizationContextTrackingStream(System.Text.Encoding.UTF8.GetBytes("content"));
+        SynchronizationContext? previous = SynchronizationContext.Current;
+        ValueTask write;
+
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+            write = _fileUtil.Write(path, stream, log: false, CancellationToken.None);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        await write;
+
+        stream.WasInspectedOnSynchronizationContext.Should().BeFalse();
+    }
+
+    [Test]
     public async ValueTask WriteFile_WithByteArray_ShouldWriteByteArrayToFile()
     {
         string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
@@ -231,6 +254,36 @@ public class FileUtilTests : HostedUnitTest
         {
             if (System.IO.Directory.Exists(root))
                 System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class SynchronizationContextTrackingStream(byte[] buffer) : System.IO.MemoryStream(buffer)
+    {
+        public bool WasInspectedOnSynchronizationContext { get; private set; }
+
+        public override long Length
+        {
+            get
+            {
+                RecordSynchronizationContext();
+                return base.Length;
+            }
+        }
+
+        public override long Position
+        {
+            get
+            {
+                RecordSynchronizationContext();
+                return base.Position;
+            }
+            set => base.Position = value;
+        }
+
+        private void RecordSynchronizationContext()
+        {
+            if (SynchronizationContext.Current is not null)
+                WasInspectedOnSynchronizationContext = true;
         }
     }
 }

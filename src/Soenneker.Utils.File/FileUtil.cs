@@ -71,8 +71,11 @@ public sealed class FileUtil : IFileUtil
 
         // Keep the text buffers below the LOH threshold. The previous 128 KB buffer
         // caused both the byte and char buffers to be allocated on the LOH.
-        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _textBufferSize);
-        int capacity = GetInitialLineCapacity(reader.BaseStream.Length, 48);
+        (StreamReader Reader, long ByteLength) setup = await ExecutionContextUtil.RunInlineOrOffload(static filePath => OpenTextReader(filePath), path, ct)
+                                                                                   .NoSync();
+
+        using StreamReader reader = setup.Reader;
+        int capacity = GetInitialLineCapacity(setup.ByteLength, 48);
         var lines = new List<string>(capacity);
 
         while (await reader.ReadLineAsync(ct) is { } line)
@@ -94,36 +97,38 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
 
+        (FileStream Stream, long Length) setup = await ExecutionContextUtil.RunInlineOrOffload(static filePath => OpenReadWithLength(filePath), path,
+                                                          cancellationToken)
+                                                      .NoSync();
+
+        await using FileStream fs = setup.Stream;
         System.IO.MemoryStream ms = await _memoryStreamUtil.Get(cancellationToken)
                                                            .NoSync();
 
-        // Never assume pooled streams are cleared.
-        ms.Position = 0;
-        ms.SetLength(0);
-
-        await using var fs = new FileStream(path, new FileStreamOptions
+        try
         {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            // CopyToAsync supplies its own pooled buffer, so a second FileStream
-            // buffer only adds memory and an extra copy.
-            BufferSize = 1,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        });
+            // Never assume pooled streams are cleared.
+            ms.Position = 0;
+            ms.SetLength(0);
 
-        if (fs.Length is > 0 and <= int.MaxValue)
-        {
-            var needed = (int)fs.Length;
-            if (needed > ms.Capacity)
-                ms.Capacity = needed;
+            if (setup.Length is > 0 and <= int.MaxValue)
+            {
+                var needed = (int)setup.Length;
+                if (needed > ms.Capacity)
+                    ms.Capacity = needed;
+            }
+
+            await fs.CopyToAsync(ms, _copyBufferSize, cancellationToken)
+                    .NoSync();
+
+            ms.ToStart();
+            return ms;
         }
-
-        await fs.CopyToAsync(ms, _copyBufferSize, cancellationToken)
-                .NoSync();
-
-        ms.ToStart();
-        return ms;
+        catch
+        {
+            ms.Dispose();
+            throw;
+        }
     }
 
     public Task Write(string path, string content, bool log = true, CancellationToken cancellationToken = default)
@@ -139,25 +144,33 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(Write), path);
 
-        var fso = new FileStreamOptions
+        FileStream dest = await ExecutionContextUtil.RunInlineOrOffload(static state =>
         {
-            Mode = FileMode.Create,
-            Access = FileAccess.Write,
-            Share = FileShare.None,
-            BufferSize = 1,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        };
+            (string filePath, Stream input) = state;
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.Create,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+                BufferSize = 1,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+            };
 
-        if (source.CanSeek)
+            if (input.CanSeek)
+            {
+                long remaining = input.Length - input.Position;
+                if (remaining > 0)
+                    options.PreallocationSize = remaining;
+            }
+
+            return new FileStream(filePath, options);
+        }, (filePath: path, input: source), ct).NoSync();
+
+        await using (dest)
         {
-            long remaining = source.Length - source.Position;
-            if (remaining > 0)
-                fso.PreallocationSize = remaining;
+            await source.CopyToAsync(dest, _copyBufferSize, ct)
+                        .NoSync();
         }
-
-        await using var dest = new FileStream(path, fso);
-        await source.CopyToAsync(dest, _copyBufferSize, ct)
-                    .NoSync();
     }
 
     public Task Write(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
@@ -259,29 +272,46 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} {src} -> {dst}", nameof(Copy), srcPath, dstPath);
 
-        string? dir = Path.GetDirectoryName(dstPath);
-
-        if (dir.HasContent())
-            Directory.CreateDirectory(dir);
-
-        await using var src = new FileStream(srcPath, new FileStreamOptions
+        (FileStream Source, FileStream Destination) streams = await ExecutionContextUtil.RunInlineOrOffload(static state =>
         {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            BufferSize = 1,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        });
+            (string sourcePath, string destinationPath) = state;
+            string? directory = Path.GetDirectoryName(destinationPath);
 
-        await using var dst = new FileStream(dstPath, new FileStreamOptions
-        {
-            Mode = FileMode.Create,
-            Access = FileAccess.Write,
-            Share = FileShare.None,
-            BufferSize = 1,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            PreallocationSize = src.Length
-        });
+            if (directory.HasContent())
+                Directory.CreateDirectory(directory);
+
+            var source = new FileStream(sourcePath, new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.Read,
+                BufferSize = 1,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+            });
+
+            try
+            {
+                var destination = new FileStream(destinationPath, new FileStreamOptions
+                {
+                    Mode = FileMode.Create,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    BufferSize = 1,
+                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                    PreallocationSize = source.Length
+                });
+
+                return (source, destination);
+            }
+            catch
+            {
+                source.Dispose();
+                throw;
+            }
+        }, (sourcePath: srcPath, destinationPath: dstPath), ct).NoSync();
+
+        await using FileStream src = streams.Source;
+        await using FileStream dst = streams.Destination;
 
         await src.CopyToAsync(dst, _copyBufferSize, ct)
                  .NoSync();
@@ -292,10 +322,6 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} start from {source} to {dest} ...", nameof(Move), sourcePath, destinationPath);
 
-        string? parent = Path.GetDirectoryName(destinationPath);
-        if (parent.HasContent())
-            Directory.CreateDirectory(parent);
-
         try
         {
             // Same-volume moves are metadata-only and avoid opening, buffering,
@@ -303,12 +329,19 @@ public sealed class FileUtil : IFileUtil
             await ExecutionContextUtil.RunInlineOrOffload(static s =>
                                       {
                                           (string source, string destination) = ((string Source, string Destination))s;
+                                          string? parent = Path.GetDirectoryName(destination);
+                                          if (parent.HasContent())
+                                              Directory.CreateDirectory(parent);
+
                                           System.IO.File.Move(source, destination, overwrite: true);
                                       }, (sourcePath, destinationPath), cancellationToken)
                                       .NoSync();
         }
-        catch (IOException) when (System.IO.File.Exists(sourcePath))
+        catch (IOException)
         {
+            if (!await Exists(sourcePath, cancellationToken).NoSync())
+                throw;
+
             // Some filesystems cannot perform a native cross-volume move. Copy to
             // the destination directory first so a failed copy cannot truncate an
             // existing destination file.
@@ -320,14 +353,18 @@ public sealed class FileUtil : IFileUtil
                     .NoSync();
 
                 cancellationToken.ThrowIfCancellationRequested();
-                System.IO.File.Move(temporaryPath, destinationPath, overwrite: true);
+                await ExecutionContextUtil.RunInlineOrOffload(static state =>
+                {
+                    (string temporary, string destination) = state;
+                    System.IO.File.Move(temporary, destination, overwrite: true);
+                }, (temporary: temporaryPath, destination: destinationPath), cancellationToken).NoSync();
 
                 await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)
                     .NoSync();
             }
             finally
             {
-                System.IO.File.Delete(temporaryPath);
+                await TryDelete(temporaryPath, log: false, CancellationToken.None).NoSync();
             }
         }
     }
@@ -374,7 +411,8 @@ public sealed class FileUtil : IFileUtil
 
         IEnumerable<string> files = Directory.EnumerateFiles(sourceDir, "*", opts);
 
-        int dop = GetCopyDegreeOfParallelism(sourceDir, destinationDir);
+        int dop = await ExecutionContextUtil.RunInlineOrOffload(static state => GetCopyDegreeOfParallelism(state.Source, state.Destination),
+            (Source: sourceDir, Destination: destinationDir), ct).NoSync();
 
         await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = dop, CancellationToken = ct }, async (file, token) =>
                       {
@@ -609,8 +647,12 @@ public sealed class FileUtil : IFileUtil
             _logger.LogDebug("{name} for {path}", nameof(ReadToHashSet), path);
 
         comparer ??= StringComparer.Ordinal;
-        using var reader = new StreamReader(path, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _textBufferSize);
-        int capacity = GetInitialLineCapacity(reader.BaseStream.Length, 32);
+        (StreamReader Reader, long ByteLength) setup = await ExecutionContextUtil.RunInlineOrOffload(static filePath => OpenTextReader(filePath), path,
+                                                               cancellationToken)
+                                                           .NoSync();
+
+        using StreamReader reader = setup.Reader;
+        int capacity = GetInitialLineCapacity(setup.ByteLength, 32);
         var set = new HashSet<string>(capacity, comparer);
 
         while (await reader.ReadLineAsync(cancellationToken)
@@ -771,6 +813,53 @@ public sealed class FileUtil : IFileUtil
             BufferSize = _copyBufferSize,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         });
+    }
+
+    private static (StreamReader Reader, long ByteLength) OpenTextReader(string path)
+    {
+        var stream = new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            BufferSize = 1,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+        });
+
+        try
+        {
+            var reader = new StreamReader(stream, _utf8NoBom, detectEncodingFromByteOrderMarks: true, bufferSize: _textBufferSize, leaveOpen: false);
+            return (reader, stream.Length);
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+    }
+
+    private static (FileStream Stream, long Length) OpenReadWithLength(string path)
+    {
+        var stream = new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            // CopyToAsync supplies its own pooled buffer, so a second FileStream
+            // buffer only adds memory and an extra copy.
+            BufferSize = 1,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+        });
+
+        try
+        {
+            return (stream, stream.Length);
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     private static int GetInitialLineCapacity(long byteLength, int estimatedBytesPerLine)
