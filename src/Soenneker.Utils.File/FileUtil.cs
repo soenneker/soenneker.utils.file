@@ -10,6 +10,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
+using System.IO.Enumeration;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +24,49 @@ public sealed class FileUtil : IFileUtil
     private const int _copyBufferSize = 128 * 1024;
     private const int _textBufferSize = 16 * 1024;
     private const int _maxInitialLineCapacity = 4 * 1024;
+
+    private static readonly EnumerationOptions _recursiveEnumerationOptions = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true,
+        AttributesToSkip = FileAttributes.ReparsePoint
+    };
+
+    private static readonly FileStreamOptions _sequentialAsyncReadOptions = new()
+    {
+        Mode = FileMode.Open,
+        Access = FileAccess.Read,
+        Share = FileShare.Read,
+        BufferSize = 1,
+        Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+    };
+
+    private static readonly FileStreamOptions _atomicWriteOptions = new()
+    {
+        Mode = FileMode.CreateNew,
+        Access = FileAccess.Write,
+        Share = FileShare.None,
+        BufferSize = _textBufferSize,
+        Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+    };
+
+    private static readonly FileStreamOptions _openReadOptions = new()
+    {
+        Mode = FileMode.Open,
+        Access = FileAccess.Read,
+        Share = FileShare.Read,
+        BufferSize = _copyBufferSize,
+        Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+    };
+
+    private static readonly FileStreamOptions _openWriteOptions = new()
+    {
+        Mode = FileMode.Create,
+        Access = FileAccess.Write,
+        Share = FileShare.None,
+        BufferSize = _copyBufferSize,
+        Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+    };
 
     // Predictable UTF-8 without BOM; also avoids repeatedly touching Encoding.UTF8 (minor).
     private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
@@ -181,15 +225,41 @@ public sealed class FileUtil : IFileUtil
         return System.IO.File.WriteAllBytesAsync(path, bytes, cancellationToken);
     }
 
-    public async ValueTask WriteAtomically(string path, Func<Stream, CancellationToken, ValueTask> writer, bool log = true,
+    public ValueTask WriteAtomically(string path, Func<Stream, CancellationToken, ValueTask> writer, bool log = true,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(writer);
 
+        return WriteAtomicallyCore(path, writer, static (stream, callback, ct) => callback(stream, ct), log, cancellationToken);
+    }
+
+    public ValueTask WriteAtomically(string path, string content, bool log = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(content);
+
+        return WriteAtomicallyCore(path, content, static async (stream, text, ct) =>
+        {
+            await using var writer = new StreamWriter(stream, _utf8NoBom, _textBufferSize, leaveOpen: true);
+            await writer.WriteAsync(text.AsMemory(), ct).NoSync();
+        }, log, cancellationToken);
+    }
+
+    public ValueTask WriteAtomically(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(bytes);
+
+        return WriteAtomicallyCore(path, bytes, static (stream, data, ct) => stream.WriteAsync(data, ct), log, cancellationToken);
+    }
+
+    private async ValueTask WriteAtomicallyCore<TState>(string path, TState state, Func<Stream, TState, CancellationToken, ValueTask> writer, bool log,
+        CancellationToken cancellationToken)
+    {
         string fullPath = Path.GetFullPath(path);
         string directory = Path.GetDirectoryName(fullPath)!;
-        string temporaryPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+        string temporaryPath = GetTemporarySiblingPath(fullPath);
 
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(WriteAtomically), fullPath);
@@ -200,20 +270,12 @@ public sealed class FileUtil : IFileUtil
             {
                 Directory.CreateDirectory(state.Directory);
 
-                return new FileStream(state.TemporaryPath, new FileStreamOptions
-                {
-                    Mode = FileMode.CreateNew,
-                    Access = FileAccess.Write,
-                    Share = FileShare.None,
-                    BufferSize = _textBufferSize,
-                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-                });
+                return new FileStream(state.TemporaryPath, _atomicWriteOptions);
             }, (Directory: directory, TemporaryPath: temporaryPath), cancellationToken).NoSync();
 
             await using (stream)
             {
-                await writer(stream, cancellationToken).NoSync();
-                await stream.FlushAsync(cancellationToken).NoSync();
+                await writer(stream, state, cancellationToken).NoSync();
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -223,24 +285,6 @@ public sealed class FileUtil : IFileUtil
         {
             await TryDelete(temporaryPath, log: false, CancellationToken.None).NoSync();
         }
-    }
-
-    public ValueTask WriteAtomically(string path, string content, bool log = true, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(content);
-
-        return WriteAtomically(path, async (stream, ct) =>
-        {
-            await using var writer = new StreamWriter(stream, _utf8NoBom, _textBufferSize, leaveOpen: true);
-            await writer.WriteAsync(content.AsMemory(), ct).NoSync();
-            await writer.FlushAsync(ct).NoSync();
-        }, log, cancellationToken);
-    }
-
-    public ValueTask WriteAtomically(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(bytes);
-        return WriteAtomically(path, (stream, ct) => stream.WriteAsync(bytes, ct), log, cancellationToken);
     }
 
     public Task WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
@@ -280,14 +324,7 @@ public sealed class FileUtil : IFileUtil
             if (directory.HasContent())
                 Directory.CreateDirectory(directory);
 
-            var source = new FileStream(sourcePath, new FileStreamOptions
-            {
-                Mode = FileMode.Open,
-                Access = FileAccess.Read,
-                Share = FileShare.Read,
-                BufferSize = 1,
-                Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-            });
+            var source = new FileStream(sourcePath, _sequentialAsyncReadOptions);
 
             try
             {
@@ -345,7 +382,7 @@ public sealed class FileUtil : IFileUtil
             // Some filesystems cannot perform a native cross-volume move. Copy to
             // the destination directory first so a failed copy cannot truncate an
             // existing destination file.
-            string temporaryPath = destinationPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            string temporaryPath = $"{destinationPath}.{Guid.NewGuid():N}.tmp";
 
             try
             {
@@ -402,14 +439,7 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} {source} -> {dest}", nameof(CopyRecursively), sourceDir, destinationDir);
 
-        var opts = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            AttributesToSkip = FileAttributes.ReparsePoint
-        };
-
-        IEnumerable<string> files = Directory.EnumerateFiles(sourceDir, "*", opts);
+        IEnumerable<string> files = Directory.EnumerateFiles(sourceDir, "*", _recursiveEnumerationOptions);
 
         int dop = await ExecutionContextUtil.RunInlineOrOffload(static state => GetCopyDegreeOfParallelism(state.Source, state.Destination),
             (Source: sourceDir, Destination: destinationDir), ct).NoSync();
@@ -419,10 +449,8 @@ public sealed class FileUtil : IFileUtil
                           string rel = Path.GetRelativePath(sourceDir, file);
                           string destFile = Path.Combine(destinationDir, rel);
 
-                          string? parent = Path.GetDirectoryName(destFile);
-                          if (parent.HasContent())
-                              Directory.CreateDirectory(parent);
-
+                          // Copy creates the parent. Avoid a duplicate CreateDirectory
+                          // call and parent-path allocation for every file.
                           await Copy(file, destFile, log: false, token)
                               .NoSync();
                       })
@@ -460,12 +488,25 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (!await Exists(path, cancellationToken)
-                .NoSync())
-            return false;
+        if (log)
+            _logger.LogDebug("Trying to delete {path} if it exists …", path);
 
-        return await TryDelete(path, log, cancellationToken)
-            .NoSync();
+        try
+        {
+            // Keep the existence check and deletion in one offload operation.
+            return await DeleteIfExists(path, log: false, cancellationToken).NoSync();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (log)
+                _logger.LogError(ex, "Exception deleting {path}", path);
+
+            return false;
+        }
     }
 
     public ValueTask DeleteAll(string directory, bool log = true, CancellationToken ct = default)
@@ -520,22 +561,21 @@ public sealed class FileUtil : IFileUtil
                                       {
                                           (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s;
 
-                                          var opts = new EnumerationOptions
+                                          var entries = new FileSystemEnumerable<AttributeEntry>(dir, static (ref FileSystemEntry entry) =>
+                                              new AttributeEntry(entry.ToFullPath(), entry.Attributes), _recursiveEnumerationOptions)
                                           {
-                                              RecurseSubdirectories = true,
-                                              IgnoreInaccessible = true,
-                                              AttributesToSkip = FileAttributes.ReparsePoint
+                                              ShouldIncludePredicate = static (ref FileSystemEntry entry) => !entry.IsDirectory
                                           };
 
-                                          foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                                          foreach (AttributeEntry entry in entries)
                                           {
                                               token.ThrowIfCancellationRequested();
 
-                                              FileAttributes attrs = System.IO.File.GetAttributes(file);
+                                              FileAttributes attrs = entry.Attributes;
                                               FileAttributes updated = attrs & ~(FileAttributes.ReadOnly | FileAttributes.Archive);
 
                                               if (updated != attrs)
-                                                  System.IO.File.SetAttributes(file, updated);
+                                                  System.IO.File.SetAttributes(entry.Path, updated);
                                           }
                                       }, (directory, cancellationToken), cancellationToken)
                                       .NoSync();
@@ -567,14 +607,7 @@ public sealed class FileUtil : IFileUtil
         {
             (string dir, string oldVal, string newVal, CancellationToken token) = ((string Directory, string OldValue, string NewValue, CancellationToken Token))s;
 
-            var opts = new EnumerationOptions
-            {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible = true,
-                AttributesToSkip = FileAttributes.ReparsePoint
-            };
-
-            foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+            foreach (string file in Directory.EnumerateFiles(dir, "*", _recursiveEnumerationOptions))
             {
                 token.ThrowIfCancellationRequested();
 
@@ -589,7 +622,7 @@ public sealed class FileUtil : IFileUtil
                 System.IO.File.Move(file, dest, overwrite: false);
             }
 
-            var directories = new List<string>(Directory.EnumerateDirectories(dir, "*", opts));
+            var directories = new List<string>(Directory.EnumerateDirectories(dir, "*", _recursiveEnumerationOptions));
             directories.Sort(static (a, b) => b.Length.CompareTo(a.Length));
 
             foreach (string subdir in directories)
@@ -704,19 +737,12 @@ public sealed class FileUtil : IFileUtil
         {
             (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s;
 
-            var opts = new EnumerationOptions
-            {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible = true,
-                AttributesToSkip = FileAttributes.ReparsePoint
-            };
-
             string[] buffer = ArrayPool<string>.Shared.Rent(256);
             var count = 0;
 
             try
             {
-                foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                foreach (string file in Directory.EnumerateFiles(dir, "*", _recursiveEnumerationOptions))
                 {
                     token.ThrowIfCancellationRequested();
 
@@ -758,14 +784,7 @@ public sealed class FileUtil : IFileUtil
 
             try
             {
-                var opts = new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    IgnoreInaccessible = true,
-                    AttributesToSkip = FileAttributes.ReparsePoint
-                };
-
-                foreach (string file in Directory.EnumerateFiles(dir, "*", opts))
+                foreach (string file in Directory.EnumerateFiles(dir, "*", _recursiveEnumerationOptions))
                 {
                     token.ThrowIfCancellationRequested();
                     list.Add(new FileInfo(file));
@@ -785,14 +804,7 @@ public sealed class FileUtil : IFileUtil
         if (log)
             _logger.LogDebug("{name} for {path}", nameof(OpenRead), path);
 
-        return new FileStream(path, new FileStreamOptions
-        {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            BufferSize = _copyBufferSize,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        });
+        return new FileStream(path, _openReadOptions);
     }
 
     public FileStream OpenWrite(string path, bool log = true)
@@ -805,26 +817,12 @@ public sealed class FileUtil : IFileUtil
         if (dir.HasContent())
             Directory.CreateDirectory(dir);
 
-        return new FileStream(path, new FileStreamOptions
-        {
-            Mode = FileMode.Create,
-            Access = FileAccess.Write,
-            Share = FileShare.None,
-            BufferSize = _copyBufferSize,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        });
+        return new FileStream(path, _openWriteOptions);
     }
 
     private static (StreamReader Reader, long ByteLength) OpenTextReader(string path)
     {
-        var stream = new FileStream(path, new FileStreamOptions
-        {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            BufferSize = 1,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        });
+        var stream = new FileStream(path, _sequentialAsyncReadOptions);
 
         try
         {
@@ -840,16 +838,9 @@ public sealed class FileUtil : IFileUtil
 
     private static (FileStream Stream, long Length) OpenReadWithLength(string path)
     {
-        var stream = new FileStream(path, new FileStreamOptions
-        {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            // CopyToAsync supplies its own pooled buffer, so a second FileStream
-            // buffer only adds memory and an extra copy.
-            BufferSize = 1,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        });
+        // CopyToAsync supplies its own pooled buffer, so a second FileStream
+        // buffer only adds memory and an extra copy.
+        var stream = new FileStream(path, _sequentialAsyncReadOptions);
 
         try
         {
@@ -872,6 +863,26 @@ public sealed class FileUtil : IFileUtil
         return (int)Math.Min(_maxInitialLineCapacity, (byteLength / estimatedBytesPerLine) + 1);
     }
 
+    private static string GetTemporarySiblingPath(string fullPath)
+    {
+        int directoryLength = fullPath.LastIndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + 1;
+        var state = (FullPath: fullPath, DirectoryLength: directoryLength, Id: Guid.NewGuid());
+
+        // One final string instead of separate file-name, formatted-name, and
+        // Path.Combine results.
+        return string.Create(fullPath.Length + 38, state, static (destination, value) =>
+        {
+            value.FullPath.AsSpan(0, value.DirectoryLength).CopyTo(destination);
+            destination[value.DirectoryLength] = '.';
+            value.FullPath.AsSpan(value.DirectoryLength).CopyTo(destination[(value.DirectoryLength + 1)..]);
+
+            int suffixStart = value.FullPath.Length + 1;
+            destination[suffixStart] = '.';
+            value.Id.TryFormat(destination[(suffixStart + 1)..], out int charsWritten, "N");
+            ".tmp".AsSpan().CopyTo(destination[(suffixStart + 1 + charsWritten)..]);
+        });
+    }
+
     private static int GetCopyDegreeOfParallelism(string sourceDirectory, string destinationDirectory)
     {
         try
@@ -892,4 +903,6 @@ public sealed class FileUtil : IFileUtil
 
         return Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
     }
+
+    private readonly record struct AttributeEntry(string Path, FileAttributes Attributes);
 }
