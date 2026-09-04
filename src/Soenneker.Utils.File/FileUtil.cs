@@ -170,7 +170,7 @@ public sealed class FileUtil : IFileUtil
         }
         catch
         {
-            ms.Dispose();
+            await ms.DisposeAsync().NoSync();
             throw;
         }
     }
