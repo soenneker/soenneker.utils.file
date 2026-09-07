@@ -82,7 +82,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task<string> Read(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(Read), path);
 
         return System.IO.File.ReadAllTextAsync(path, cancellationToken);
@@ -110,7 +110,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<List<string>> ReadAsLines(string path, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(ReadAsLines), path);
 
         // Keep the text buffers below the LOH threshold. The previous 128 KB buffer
@@ -130,7 +130,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task<byte[]> ReadToBytes(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(ReadToBytes), path);
 
         return System.IO.File.ReadAllBytesAsync(path, cancellationToken);
@@ -138,7 +138,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<System.IO.MemoryStream> ReadToMemoryStream(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(ReadToMemoryStream), path);
 
         (FileStream Stream, long Length) setup = await ExecutionContextUtil.RunInlineOrOffload(static filePath => OpenReadWithLength(filePath), path,
@@ -177,7 +177,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task Write(string path, string content, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(Write), path);
 
         return System.IO.File.WriteAllTextAsync(path, content, _utf8NoBom, cancellationToken);
@@ -185,7 +185,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask Write(string path, Stream source, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(Write), path);
 
         FileStream dest = await ExecutionContextUtil.RunInlineOrOffload(static state =>
@@ -219,7 +219,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task Write(string path, byte[] bytes, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(Write), path);
 
         return System.IO.File.WriteAllBytesAsync(path, bytes, cancellationToken);
@@ -261,7 +261,7 @@ public sealed class FileUtil : IFileUtil
         string directory = Path.GetDirectoryName(fullPath)!;
         string temporaryPath = GetTemporarySiblingPath(fullPath);
 
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(WriteAtomically), fullPath);
 
         try
@@ -289,7 +289,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task WriteAllLines(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(WriteAllLines), path);
 
         return System.IO.File.WriteAllLinesAsync(path, lines, _utf8NoBom, cancellationToken);
@@ -297,7 +297,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task Append(string path, string content, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(Append), path);
 
         return System.IO.File.AppendAllTextAsync(path, content, _utf8NoBom, cancellationToken);
@@ -305,7 +305,7 @@ public sealed class FileUtil : IFileUtil
 
     public Task Append(string path, IEnumerable<string> lines, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(Append), path);
 
         return System.IO.File.AppendAllLinesAsync(path, lines, _utf8NoBom, cancellationToken);
@@ -313,7 +313,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask Copy(string srcPath, string dstPath, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} {src} -> {dst}", nameof(Copy), srcPath, dstPath);
 
         (FileStream Source, FileStream Destination) streams = await ExecutionContextUtil.RunInlineOrOffload(static state =>
@@ -356,7 +356,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask Move(string sourcePath, string destinationPath, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} start from {source} to {dest} ...", nameof(Move), sourcePath, destinationPath);
 
         try
@@ -408,7 +408,7 @@ public sealed class FileUtil : IFileUtil
 
     public ValueTask Delete(string path, bool ignoreMissing = true, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} start for {path} ...", nameof(Delete), path);
 
         // No closure: state passed in.
@@ -436,7 +436,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask CopyRecursively(string sourceDir, string destinationDir, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} {source} -> {dest}", nameof(CopyRecursively), sourceDir, destinationDir);
 
         IEnumerable<string> files = Directory.EnumerateFiles(sourceDir, "*", _recursiveEnumerationOptions);
@@ -473,7 +473,7 @@ public sealed class FileUtil : IFileUtil
 
     public ValueTask<bool> DeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} start for {path} …", nameof(DeleteIfExists), path);
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -488,7 +488,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> TryDeleteIfExists(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("Trying to delete {path} if it exists …", path);
 
         try
@@ -511,7 +511,7 @@ public sealed class FileUtil : IFileUtil
 
     public ValueTask DeleteAll(string directory, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} start for {directory} ...", nameof(DeleteAll), directory);
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -528,7 +528,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> TryDeleteAll(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("Trying to delete all files in {directory} ...", directory);
 
         try
@@ -552,7 +552,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> TryRemoveReadonlyAndArchiveAttributesFromAll(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("Trying to remove readonly/archive attributes from {directory} ...", directory);
 
         try
@@ -600,7 +600,7 @@ public sealed class FileUtil : IFileUtil
         if (string.IsNullOrEmpty(oldValue))
             throw new ArgumentException("oldValue must be non-empty", nameof(oldValue));
 
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} {old} -> {new} in {directory} ...", nameof(RenameAllInDirectoryRecursively), oldValue, newValue, directory);
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -651,7 +651,7 @@ public sealed class FileUtil : IFileUtil
 
     public async ValueTask<bool> TryDelete(string path, bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("Trying to delete {path} …", path);
 
         try
@@ -676,7 +676,7 @@ public sealed class FileUtil : IFileUtil
     public async ValueTask<HashSet<string>> ReadToHashSet(string path, IEqualityComparer<string>? comparer = null, bool trim = true, bool ignoreEmpty = true,
         bool log = true, CancellationToken cancellationToken = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(ReadToHashSet), path);
 
         comparer ??= StringComparer.Ordinal;
@@ -730,7 +730,7 @@ public sealed class FileUtil : IFileUtil
     [Pure]
     public ValueTask<string[]> GetAllFileNamesInDirectoryRecursively(string directory, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("Getting all files from directory ({directory}) recursively...", directory);
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -773,7 +773,7 @@ public sealed class FileUtil : IFileUtil
 
     public ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true, CancellationToken ct = default)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("Getting all FileInfos in {directory} recursively...", directory);
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -801,7 +801,7 @@ public sealed class FileUtil : IFileUtil
 
     public FileStream OpenRead(string path, bool log = true)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(OpenRead), path);
 
         return new FileStream(path, _openReadOptions);
@@ -809,7 +809,7 @@ public sealed class FileUtil : IFileUtil
 
     public FileStream OpenWrite(string path, bool log = true)
     {
-        if (log)
+        if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(OpenWrite), path);
 
         string? dir = Path.GetDirectoryName(path);
