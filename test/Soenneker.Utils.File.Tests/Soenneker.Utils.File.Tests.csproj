@@ -18,9 +18,9 @@
 
     <ItemGroup>
         <PackageReference Include="Soenneker.Tests.Benchmark" Version="4.0.156" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1214" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1217" />
         <PackageReference Include="Soenneker.Utils.Test" Version="4.0.327" />
-        <PackageReference Include="Soenneker.Tests.HostedUnit" Version="4.0.247" />
+        <PackageReference Include="Soenneker.Tests.HostedUnit" Version="4.0.249" />
         <PackageReference Include="TUnit" Version="1.66.27" />
     </ItemGroup>
 
