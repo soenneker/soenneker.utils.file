@@ -18,7 +18,6 @@ using Soenneker.Utils.ExecutionContexts;
 
 namespace Soenneker.Utils.File;
 
-/// <inheritdoc cref="IFileUtil"/>
 public sealed class FileUtil : IFileUtil
 {
     private const int _copyBufferSize = 128 * 1024;
@@ -264,6 +263,7 @@ public sealed class FileUtil : IFileUtil
         if (log && _logger.IsEnabled(LogLevel.Debug))
             _logger.LogDebug("{name} for {path}", nameof(WriteAtomically), fullPath);
 
+        bool committed = false;
         try
         {
             FileStream stream = await ExecutionContextUtil.RunInlineOrOffload(static state =>
@@ -280,10 +280,13 @@ public sealed class FileUtil : IFileUtil
 
             cancellationToken.ThrowIfCancellationRequested();
             await Move(temporaryPath, fullPath, log: false, cancellationToken).NoSync();
+            committed = true;
         }
         finally
         {
-            await TryDelete(temporaryPath, log: false, CancellationToken.None).NoSync();
+            // A successful move consumed the temporary file; only failures need cleanup.
+            if (!committed)
+                await TryDelete(temporaryPath, log: false, CancellationToken.None).NoSync();
         }
     }
 
@@ -564,7 +567,8 @@ public sealed class FileUtil : IFileUtil
                                           var entries = new FileSystemEnumerable<AttributeEntry>(dir, static (ref FileSystemEntry entry) =>
                                               new AttributeEntry(entry.ToFullPath(), entry.Attributes), _recursiveEnumerationOptions)
                                           {
-                                              ShouldIncludePredicate = static (ref FileSystemEntry entry) => !entry.IsDirectory
+                                              ShouldIncludePredicate = static (ref FileSystemEntry entry) => !entry.IsDirectory &&
+                                                  (entry.Attributes & (FileAttributes.ReadOnly | FileAttributes.Archive)) != 0
                                           };
 
                                           foreach (AttributeEntry entry in entries)
@@ -611,31 +615,33 @@ public sealed class FileUtil : IFileUtil
             {
                 token.ThrowIfCancellationRequested();
 
-                string fileName = Path.GetFileName(file);
-                if (!fileName.Contains(oldVal, StringComparison.Ordinal))
+                ReadOnlySpan<char> fileName = Path.GetFileName(file.AsSpan());
+                if (!fileName.Contains(oldVal.AsSpan(), StringComparison.Ordinal))
                     continue;
 
-                string newFileName = fileName.Replace(oldVal, newVal, StringComparison.Ordinal);
-                string? parent = Path.GetDirectoryName(file);
-                string dest = parent is null ? newFileName : Path.Combine(parent, newFileName);
+                string newFileName = fileName.ToString().Replace(oldVal, newVal, StringComparison.Ordinal);
+                string dest = Path.Join(Path.GetDirectoryName(file.AsSpan()), newFileName.AsSpan());
 
                 System.IO.File.Move(file, dest, overwrite: false);
             }
 
-            var directories = new List<string>(Directory.EnumerateDirectories(dir, "*", _recursiveEnumerationOptions));
+            // Only matching directories need storage and sorting. Unmatched ancestors
+            // remain in place, so descendant-before-ancestor ordering is unchanged.
+            var directories = new List<string>();
+            foreach (string subdir in Directory.EnumerateDirectories(dir, "*", _recursiveEnumerationOptions))
+            {
+                token.ThrowIfCancellationRequested();
+                if (Path.GetFileName(subdir.AsSpan()).Contains(oldVal.AsSpan(), StringComparison.Ordinal))
+                    directories.Add(subdir);
+            }
             directories.Sort(static (a, b) => b.Length.CompareTo(a.Length));
 
             foreach (string subdir in directories)
             {
                 token.ThrowIfCancellationRequested();
 
-                string name = Path.GetFileName(subdir);
-                if (!name.Contains(oldVal, StringComparison.Ordinal))
-                    continue;
-
-                string newName = name.Replace(oldVal, newVal, StringComparison.Ordinal);
-                string? parent = Path.GetDirectoryName(subdir);
-                string dest = parent is null ? newName : Path.Combine(parent, newName);
+                string newName = Path.GetFileName(subdir).Replace(oldVal, newVal, StringComparison.Ordinal);
+                string dest = Path.Join(Path.GetDirectoryName(subdir.AsSpan()), newName.AsSpan());
 
                 Directory.Move(subdir, dest);
             }
@@ -784,10 +790,12 @@ public sealed class FileUtil : IFileUtil
 
             try
             {
-                foreach (string file in Directory.EnumerateFiles(dir, "*", _recursiveEnumerationOptions))
+                // DirectoryInfo enumeration initializes FileInfo from enumeration metadata,
+                // avoiding a separate path normalization and later metadata lookup per file.
+                foreach (FileInfo file in new DirectoryInfo(dir).EnumerateFiles("*", _recursiveEnumerationOptions))
                 {
                     token.ThrowIfCancellationRequested();
-                    list.Add(new FileInfo(file));
+                    list.Add(file);
                 }
             }
             catch (Exception e) when (e is DirectoryNotFoundException or UnauthorizedAccessException or PathTooLongException)

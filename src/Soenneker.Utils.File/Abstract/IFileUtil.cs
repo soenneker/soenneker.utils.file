@@ -336,6 +336,7 @@ public interface IFileUtil
     /// <param name="log">True to emit operational logging.</param>
     /// <param name="cancellationToken">Signals that the operation should stop.</param>
     /// <returns>Information for files in readable directories.</returns>
+    /// <remarks>Metadata is cached during enumeration. Call <see cref="FileSystemInfo.Refresh"/> to observe subsequent filesystem changes.</remarks>
     ValueTask<List<FileInfo>> GetAllFileInfoInDirectoryRecursivelySafe(string directory, bool log = true,
         CancellationToken cancellationToken = default);
 

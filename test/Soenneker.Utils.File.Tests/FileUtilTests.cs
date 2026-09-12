@@ -257,6 +257,81 @@ public class FileUtilTests : HostedUnitTest
         }
     }
 
+    [Test]
+    public async ValueTask RenameAll_ShouldRenameNestedMatchesAndKeepOtherEntries(CancellationToken cancellationToken)
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"file-util-tests-{Guid.NewGuid():N}");
+        try
+        {
+            string nested = System.IO.Path.Combine(root, "old-parent", "unchanged", "old-child");
+            System.IO.Directory.CreateDirectory(nested);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(nested, "old-file.txt"), "renamed", cancellationToken);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(nested, "keep.txt"), "kept", cancellationToken);
+            await _fileUtil.RenameAllInDirectoryRecursively(root, "old", "new", false, cancellationToken);
+            string renamed = System.IO.Path.Combine(root, "new-parent", "unchanged", "new-child");
+            (await System.IO.File.ReadAllTextAsync(System.IO.Path.Combine(renamed, "new-file.txt"), cancellationToken)).Should().Be("renamed");
+            (await System.IO.File.ReadAllTextAsync(System.IO.Path.Combine(renamed, "keep.txt"), cancellationToken)).Should().Be("kept");
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(root))
+                System.IO.Directory.Delete(root, true);
+        }
+    }
+
+    [Test]
+    public async ValueTask FileInfoEnumeration_ShouldIncludeNestedMetadataAndAllowRefresh(CancellationToken cancellationToken)
+    {
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"file-util-tests-{Guid.NewGuid():N}");
+        try
+        {
+            string nested = System.IO.Path.Combine(root, "nested");
+            System.IO.Directory.CreateDirectory(nested);
+            string path = System.IO.Path.Combine(nested, "file.bin");
+            await System.IO.File.WriteAllBytesAsync(path, new byte[17], cancellationToken);
+            var files = await _fileUtil.GetAllFileInfoInDirectoryRecursivelySafe(root, false, cancellationToken);
+            FileInfo info = files.Should().ContainSingle().Subject;
+            info.FullName.Should().Be(path);
+            info.Length.Should().Be(17);
+            await System.IO.File.WriteAllBytesAsync(path, new byte[29], cancellationToken);
+            info.Refresh();
+            info.Length.Should().Be(29);
+            (await _fileUtil.GetAllFileInfoInDirectoryRecursivelySafe(System.IO.Path.Combine(root, "missing"), false, cancellationToken)).Should().BeEmpty();
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(root))
+                System.IO.Directory.Delete(root, true);
+        }
+    }
+
+    [Test]
+    public async ValueTask RemoveAttributes_ShouldPreserveOtherAttributesAndUnchangedFiles(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        string root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"file-util-tests-{Guid.NewGuid():N}");
+        System.IO.Directory.CreateDirectory(root);
+        string changed = System.IO.Path.Combine(root, "changed.txt");
+        string unchanged = System.IO.Path.Combine(root, "unchanged.txt");
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(changed, "changed", cancellationToken);
+            await System.IO.File.WriteAllTextAsync(unchanged, "unchanged", cancellationToken);
+            System.IO.File.SetAttributes(changed, FileAttributes.ReadOnly | FileAttributes.Archive | FileAttributes.Hidden);
+            System.IO.File.SetAttributes(unchanged, FileAttributes.Normal);
+            (await _fileUtil.TryRemoveReadonlyAndArchiveAttributesFromAll(root, false, cancellationToken)).Should().BeTrue();
+            System.IO.File.GetAttributes(changed).Should().Be(FileAttributes.Hidden);
+            System.IO.File.GetAttributes(unchanged).Should().Be(FileAttributes.Normal);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(changed))
+                System.IO.File.SetAttributes(changed, FileAttributes.Normal);
+            System.IO.Directory.Delete(root, true);
+        }
+    }
+
     private sealed class SynchronizationContextTrackingStream(byte[] buffer) : System.IO.MemoryStream(buffer)
     {
         public bool WasInspectedOnSynchronizationContext { get; private set; }
