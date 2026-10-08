@@ -36,7 +36,7 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask ReadFile_ShouldReturnFileContent(CancellationToken cancellationToken)
     {
-        string path = await Setup(System.Threading.CancellationToken.None);
+        string path = await Setup(cancellationToken);
 
         const string expectedContent = "Test file content";
 
@@ -48,7 +48,7 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask TryReadFile_WhenFileExists_ShouldReturnFileContent(CancellationToken cancellationToken)
     {
-        string path = await Setup(System.Threading.CancellationToken.None);
+        string path = await Setup(cancellationToken);
 
         const string expectedContent = "Test file content";
 
@@ -60,7 +60,7 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask TryReadFile_WhenFileDoesNotExist_ShouldReturnNull(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
 
         string? content = await _fileUtil.TryRead(path, cancellationToken: cancellationToken);
 
@@ -70,20 +70,20 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask WriteAllLines_ShouldWriteAllLinesToFile(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
 
         var lines = new List<string> {"Line 1", "Line 2", "Line 3"};
 
         await _fileUtil.WriteAllLines(path, lines, cancellationToken: cancellationToken);
 
-        string[]? writtenLines = await System.IO.File.ReadAllLinesAsync(path, System.Threading.CancellationToken.None);
+        string[]? writtenLines = await System.IO.File.ReadAllLinesAsync(path, cancellationToken);
         writtenLines.Should().BeEquivalentTo(lines);
     }
 
     [Test]
     public async ValueTask ReadFileToBytes_ShouldReturnFileContentAsBytes(CancellationToken cancellationToken)
     {
-        string path = await Setup(System.Threading.CancellationToken.None);
+        string path = await Setup(cancellationToken);
 
         const string expectedContent = "Test file content";
         byte[]? expectedBytes = expectedContent.Select(c => (byte) c).ToArray();
@@ -96,14 +96,14 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask ReadFileToMemoryStream_ShouldReturnFileContentAsMemoryStream(CancellationToken cancellationToken)
     {
-        string path = await Setup(System.Threading.CancellationToken.None);
+        string path = await Setup(cancellationToken);
 
         const string expectedContent = "Test file content";
 
         using System.IO.MemoryStream? memoryStream = await _fileUtil.ReadToMemoryStream(path, cancellationToken: cancellationToken);
         using var reader = new StreamReader(memoryStream);
 
-        string content = await reader.ReadToEndAsync(System.Threading.CancellationToken.None);
+        string content = await reader.ReadToEndAsync(cancellationToken);
 
         content.Should().Be(expectedContent);
     }
@@ -111,7 +111,7 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask ReadFileAsLines_ShouldReturnFileContentAsList(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
         var lines = new List<string> {"Line 1", "Line 2", "Line 3"};
 
         await _fileUtil.WriteAllLines(path, lines, cancellationToken: cancellationToken);
@@ -126,36 +126,36 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask WriteFile_ShouldWriteContentToFile(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
         const string content = "Test content to write";
 
         await _fileUtil.Write(path, content, cancellationToken: cancellationToken);
 
-        string writtenContent = await System.IO.File.ReadAllTextAsync(path, System.Threading.CancellationToken.None);
+        string writtenContent = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
         writtenContent.Should().Be(content);
     }
 
     [Test]
     public async ValueTask WriteFile_WithStream_ShouldWriteStreamContentToFile(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
         const string content = "Test content to write with stream";
         using var stream = new System.IO.MemoryStream();
         await using var writer = new StreamWriter(stream);
         await writer.WriteAsync(content);
-        await writer.FlushAsync(System.Threading.CancellationToken.None);
+        await writer.FlushAsync(cancellationToken);
         stream.Position = 0;
 
         await _fileUtil.Write(path, stream, cancellationToken: cancellationToken);
 
-        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, System.Threading.CancellationToken.None);
+        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
         writtenContent.Should().Be(content);
     }
 
     [Test]
     public async ValueTask WriteFile_WithStream_ShouldOffloadSynchronousSetupFromSynchronizationContext(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
         await using var stream = new SynchronizationContextTrackingStream(System.Text.Encoding.UTF8.GetBytes("content"));
         SynchronizationContext? previous = SynchronizationContext.Current;
         ValueTask write;
@@ -178,32 +178,32 @@ public class FileUtilTests : HostedUnitTest
     [Test]
     public async ValueTask WriteFile_WithByteArray_ShouldWriteByteArrayToFile(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", System.Threading.CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
         const string content = "Test content to write with byte array";
         byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
 
         await _fileUtil.Write(path, bytes, cancellationToken: cancellationToken);
 
-        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, System.Threading.CancellationToken.None);
+        string? writtenContent = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
         writtenContent.Should().Be(content);
     }
 
     [Test]
     public async ValueTask WriteAtomically_ShouldReplaceDestination(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
-        await System.IO.File.WriteAllTextAsync(path, "old", CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
+        await System.IO.File.WriteAllTextAsync(path, "old", cancellationToken);
 
         await _fileUtil.WriteAtomically(path, "new", log: false, cancellationToken);
 
-        (await System.IO.File.ReadAllTextAsync(path, CancellationToken.None)).Should().Be("new");
+        (await System.IO.File.ReadAllTextAsync(path, cancellationToken)).Should().Be("new");
     }
 
     [Test]
     public async ValueTask WriteAtomically_WhenWriterFails_ShouldPreserveDestination(CancellationToken cancellationToken)
     {
-        string path = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
-        await System.IO.File.WriteAllTextAsync(path, "old", CancellationToken.None);
+        string path = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
+        await System.IO.File.WriteAllTextAsync(path, "old", cancellationToken);
         var failed = false;
 
         try
@@ -217,21 +217,21 @@ public class FileUtilTests : HostedUnitTest
         }
 
         failed.Should().BeTrue();
-        (await System.IO.File.ReadAllTextAsync(path, CancellationToken.None)).Should().Be("old");
+        (await System.IO.File.ReadAllTextAsync(path, cancellationToken)).Should().Be("old");
     }
 
     [Test]
     public async ValueTask Move_ShouldOverwriteDestinationAndDeleteSource(CancellationToken cancellationToken)
     {
-        string source = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
-        string destination = await _pathUtil.GetRandomTempFilePath("txt", CancellationToken.None);
-        await System.IO.File.WriteAllTextAsync(source, "source", CancellationToken.None);
-        await System.IO.File.WriteAllTextAsync(destination, "destination", CancellationToken.None);
+        string source = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
+        string destination = await _pathUtil.GetRandomTempFilePath("txt", cancellationToken);
+        await System.IO.File.WriteAllTextAsync(source, "source", cancellationToken);
+        await System.IO.File.WriteAllTextAsync(destination, "destination", cancellationToken);
 
         await _fileUtil.Move(source, destination, log: false, cancellationToken);
 
         System.IO.File.Exists(source).Should().BeFalse();
-        (await System.IO.File.ReadAllTextAsync(destination, CancellationToken.None)).Should().Be("source");
+        (await System.IO.File.ReadAllTextAsync(destination, cancellationToken)).Should().Be("source");
     }
 
     [Test]
@@ -243,8 +243,8 @@ public class FileUtilTests : HostedUnitTest
         {
             string child = System.IO.Path.Combine(root, "child");
             System.IO.Directory.CreateDirectory(child);
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(root, "one.txt"), "one", CancellationToken.None);
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(child, "two.txt"), "two", CancellationToken.None);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(root, "one.txt"), "one", cancellationToken);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(child, "two.txt"), "two", cancellationToken);
 
             string[] files = await _fileUtil.GetAllFileNamesInDirectoryRecursively(root, log: false, cancellationToken);
 
