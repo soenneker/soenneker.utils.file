@@ -279,7 +279,8 @@ public sealed class FileUtil : IFileUtil
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            await Move(temporaryPath, fullPath, log: false, cancellationToken).NoSync();
+            await ExecutionContextUtil.RunInlineOrOffload(static paths => CommitAtomicWrite(paths.TemporaryPath, paths.DestinationPath),
+                (TemporaryPath: temporaryPath, DestinationPath: fullPath), cancellationToken).NoSync();
             committed = true;
         }
         finally
@@ -287,6 +288,27 @@ public sealed class FileUtil : IFileUtil
             // A successful move consumed the temporary file; only failures need cleanup.
             if (!committed)
                 await TryDelete(temporaryPath, log: false, CancellationToken.None).NoSync();
+        }
+    }
+
+    private static void CommitAtomicWrite(string temporaryPath, string destinationPath)
+    {
+        // Move(overwrite: true) cannot replace a file with an active memory mapping on Windows.
+        // Replace preserves existing readers while publishing the complete new file.
+        if (System.IO.File.Exists(destinationPath))
+        {
+            System.IO.File.Replace(temporaryPath, destinationPath, destinationBackupFileName: null);
+            return;
+        }
+
+        try
+        {
+            System.IO.File.Move(temporaryPath, destinationPath);
+        }
+        catch (IOException) when (System.IO.File.Exists(destinationPath))
+        {
+            // Another writer may have created the destination after the existence check.
+            System.IO.File.Replace(temporaryPath, destinationPath, destinationBackupFileName: null);
         }
     }
 
@@ -373,7 +395,7 @@ public sealed class FileUtil : IFileUtil
                                           if (parent.HasContent())
                                               Directory.CreateDirectory(parent);
 
-                                          System.IO.File.Move(source, destination, overwrite: true);
+                                          CommitAtomicWrite(source, destination);
                                       }, (sourcePath, destinationPath), cancellationToken)
                                       .NoSync();
         }
@@ -385,7 +407,7 @@ public sealed class FileUtil : IFileUtil
             // Some filesystems cannot perform a native cross-volume move. Copy to
             // the destination directory first so a failed copy cannot truncate an
             // existing destination file.
-            string temporaryPath = $"{destinationPath}.{Guid.NewGuid():N}.tmp";
+            string temporaryPath = $"{destinationPath}.{Guid.NewGuid()}.tmp";
 
             try
             {
@@ -396,7 +418,7 @@ public sealed class FileUtil : IFileUtil
                 await ExecutionContextUtil.RunInlineOrOffload(static state =>
                 {
                     (string temporary, string destination) = state;
-                    System.IO.File.Move(temporary, destination, overwrite: true);
+                    CommitAtomicWrite(temporary, destination);
                 }, (temporary: temporaryPath, destination: destinationPath), cancellationToken).NoSync();
 
                 await Delete(sourcePath, ignoreMissing: false, log: false, cancellationToken)

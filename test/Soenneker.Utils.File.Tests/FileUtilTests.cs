@@ -4,6 +4,7 @@ using Soenneker.Utils.File.Abstract;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Threading.Tasks;
 using Soenneker.Utils.Path;
@@ -218,6 +219,70 @@ public class FileUtilTests : HostedUnitTest
 
         failed.Should().BeTrue();
         (await System.IO.File.ReadAllTextAsync(path, cancellationToken)).Should().Be("old");
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async ValueTask AtomicReplacement_ShouldPreserveMappedReaders(bool move, CancellationToken cancellationToken)
+    {
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"mapped-file-test-{Guid.NewGuid()}");
+        Directory.CreateDirectory(directory);
+        string destination = System.IO.Path.Combine(directory, "destination.txt");
+        string source = System.IO.Path.Combine(directory, "source.txt");
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(destination, "old", cancellationToken);
+            using (var stream = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var mapping = MemoryMappedFile.CreateFromFile(stream, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true))
+            using (MemoryMappedViewAccessor view = mapping.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read))
+            {
+                if (move)
+                {
+                    await System.IO.File.WriteAllTextAsync(source, "new content", cancellationToken);
+                    await _fileUtil.Move(source, destination, log: false, cancellationToken);
+                    System.IO.File.Exists(source).Should().BeFalse();
+                }
+                else
+                    await _fileUtil.WriteAtomically(destination, "new content", log: false, cancellationToken);
+
+                (await System.IO.File.ReadAllTextAsync(destination, cancellationToken)).Should().Be("new content");
+                view.ReadByte(0).Should().Be((byte)'o');
+                view.ReadByte(1).Should().Be((byte)'l');
+                view.ReadByte(2).Should().Be((byte)'d');
+                Directory.GetFiles(directory).Should().ContainSingle();
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    public async ValueTask WriteAtomically_CancellationBeforeReplacement_ShouldPreserveDestination(CancellationToken cancellationToken)
+    {
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"atomic-cancel-test-{Guid.NewGuid()}");
+        Directory.CreateDirectory(directory);
+        string destination = System.IO.Path.Combine(directory, "destination.txt");
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(destination, "old", cancellationToken);
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Func<Task> write = async () => await _fileUtil.WriteAtomically(destination, async (stream, token) =>
+            {
+                await stream.WriteAsync(new byte[] { 1, 2, 3 }, token);
+                cancellation.Cancel();
+            }, log: false, cancellation.Token);
+
+            await write.Should().ThrowAsync<OperationCanceledException>();
+            (await System.IO.File.ReadAllTextAsync(destination, cancellationToken)).Should().Be("old");
+            Directory.GetFiles(directory).Should().ContainSingle();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Test]

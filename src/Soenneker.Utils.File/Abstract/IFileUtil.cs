@@ -104,7 +104,10 @@ public interface IFileUtil
     /// <param name="log">Indicates whether to log the operation.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the operation.</returns>
-    /// <remarks>The existing destination is left unchanged when the callback fails or cancellation is requested before replacement.</remarks>
+    /// <remarks>
+    /// The existing destination is left unchanged when the callback fails or cancellation is requested before replacement.
+    /// Existing readers and memory mappings may retain the old file; on Windows their handles must allow delete sharing.
+    /// </remarks>
     ValueTask WriteAtomically(string path, Func<Stream, CancellationToken, ValueTask> writer, bool log = true,
         CancellationToken cancellationToken = default);
 
